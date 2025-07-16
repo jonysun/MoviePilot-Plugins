@@ -22,19 +22,19 @@ from app.utils.string import StringUtils
 
 class TorrentTransfer(_PluginBase):
     # 插件名称
-    plugin_name = "自动转移做种"
+    plugin_name = "自动转移做种（修改版）"
     # 插件描述
-    plugin_desc = "定期转移下载器中的做种任务到另一个下载器。"
+    plugin_desc = "定期转移下载器中的做种任务到另一个下载器，标签逻辑为或。"
     # 插件图标
     plugin_icon = "seed.png"
     # 插件版本
-    plugin_version = "1.10.1"
+    plugin_version = "1.0.0"
     # 插件作者
-    plugin_author = "jxxghp"
+    plugin_author = "jxxghp,jonysun"
     # 作者主页
-    author_url = "https://github.com/jxxghp"
+    author_url = "https://github.com/jonysun"
     # 插件配置项ID前缀
-    plugin_config_prefix = "torrenttransfer_"
+    plugin_config_prefix = "torrenttransferforsun_"
     # 加载顺序
     plugin_order = 18
     # 可使用的用户级别
@@ -691,13 +691,21 @@ class TorrentTransfer(_PluginBase):
                     if is_skip:
                         continue
                 # 排除不含有转移标签的种子
+                # if self._includelabels:
+                #     is_skip = False
+                #     for label in self._includelabels.split(','):
+                #         if label not in torrent_labels:
+                #             logger.info(f"种子 {hash_str} 不含有转移标签 {label}，跳过 ...")
+                #             is_skip = True
+                #             break
+                #     if is_skip:
+                #         continue
                 if self._includelabels:
-                    is_skip = False
-                    for label in self._includelabels.split(','):
-                        if label not in torrent_labels:
-                            logger.info(f"种子 {hash_str} 不含有转移标签 {label}，跳过 ...")
-                            is_skip = True
-                            break
+                    include_list = [lbl.strip() for lbl in self._includelabels.split(',') if lbl.strip()]
+                    if not (set(include_list) & set(torrent_labels)):
+                        logger.info(f"种子 {hash_str} 不含有任意一个转移标签 {include_list}，跳过 ...")
+                        is_skip = True
+                        break
                     if is_skip:
                         continue
 
