@@ -1,5 +1,5 @@
 {
-    "TorrentTransfer": {
+    "TorrentTransferNew": {
         "name": "自动转移做种（修改版）",
         "description": "定期转移下载器中的做种任务到另一个下载器，修改标签逻辑。",
         "labels": "做种",

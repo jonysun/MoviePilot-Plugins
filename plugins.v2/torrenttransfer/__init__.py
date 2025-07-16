@@ -20,7 +20,7 @@ from app.schemas import NotificationType, ServiceInfo
 from app.utils.string import StringUtils
 
 
-class TorrentTransfer(_PluginBase):
+class TorrentTransferNew(_PluginBase):
     # 插件名称
     plugin_name = "自动转移做种（修改版）"
     # 插件描述
