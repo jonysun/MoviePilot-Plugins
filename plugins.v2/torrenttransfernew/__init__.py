@@ -701,6 +701,7 @@ class TorrentTransferNew(_PluginBase):
                 #     if is_skip:
                 #         continue
                 if self._includelabels:
+                    is_skip = False
                     include_list = [lbl.strip() for lbl in self._includelabels.split(',') if lbl.strip()]
                     if not (set(include_list) & set(torrent_labels)):
                         logger.info(f"种子 {hash_str} 不含有任意一个转移标签 {include_list}，跳过 ...")
