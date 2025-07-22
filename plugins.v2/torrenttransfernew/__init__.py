@@ -58,6 +58,7 @@ class TorrentTransferNew(_PluginBase):
     _nopaths = None
     _deletesource = False
     _deleteduplicate = False
+    _multilabeland = False
     _fromtorrentpath = None
     _autostart = False
     _skipverify = False
@@ -90,6 +91,7 @@ class TorrentTransferNew(_PluginBase):
             self._todownloader = config.get("todownloader")
             self._deletesource = config.get("deletesource")
             self._deleteduplicate = config.get("deleteduplicate")
+            self._multilabeland = config.get("multilabeland")
             self._fromtorrentpath = config.get("fromtorrentpath")
             self._nopaths = config.get("nopaths")
             self._autostart = config.get("autostart")
@@ -548,6 +550,21 @@ class TorrentTransferNew(_PluginBase):
                                         }
                                     }
                                 ]
+                            },                            {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'multilabeland',
+                                            'label': '多标签逻辑“与”',
+                                        }
+                                    }
+                                ]
                             },
                             {
                                 'component': 'VCol',
@@ -583,6 +600,7 @@ class TorrentTransferNew(_PluginBase):
             "todownloader": "",
             "deletesource": False,
             "deleteduplicate": False,
+            "multilabeland":False,
             "fromtorrentpath": "",
             "nopaths": "",
             "autostart": True,
@@ -748,24 +766,26 @@ class TorrentTransferNew(_PluginBase):
                     if is_skip:
                         continue
                 # 排除不含有转移标签的种子
-                # if self._includelabels:
-                #     is_skip = False
-                #     for label in self._includelabels.split(','):
-                #         if label not in torrent_labels:
-                #             logger.info(f"种子 {hash_str} 不含有转移标签 {label}，跳过 ...")
-                #             is_skip = True
-                #             break
-                #     if is_skip:
-                #         continue
 
-                if self._includelabels:
-                    is_skip = False
-                    include_list = [lbl.strip() for lbl in self._includelabels.split(',') if lbl.strip()]
-                    if not (set(include_list) & set(torrent_labels)):
-                        logger.info(f"种子 {hash_str} 不含有任意一个转移标签 {include_list}，跳过 ...")
-                        is_skip = True
-                    if is_skip:
-                        continue
+                if self._multilabeland:
+                    if self._includelabels:
+                        is_skip = False
+                        for label in self._includelabels.split(','):
+                            if label not in torrent_labels:
+                                logger.info(f"种子 {hash_str} 不含有转移标签 {label}，跳过 ...")
+                                is_skip = True
+                                break
+                        if is_skip:
+                            continue
+                else:
+                    if self._includelabels:
+                        is_skip = False
+                        include_list = [lbl.strip() for lbl in self._includelabels.split(',') if lbl.strip()]
+                        if not (set(include_list) & set(torrent_labels)):
+                            logger.info(f"种子 {hash_str} 不含有任意一个转移标签 {include_list}，跳过 ...")
+                            is_skip = True
+                        if is_skip:
+                            continue
 
             # 添加转移数据
             trans_torrents.append({
