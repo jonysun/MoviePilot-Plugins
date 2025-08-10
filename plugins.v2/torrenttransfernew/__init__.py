@@ -24,11 +24,11 @@ class TorrentTransferNew(_PluginBase):
     # 插件名称
     plugin_name = "自动转移做种（修改版）"
     # 插件描述
-    plugin_desc = "定期转移下载器中的做种任务到另一个下载器，增加多标签逻辑开关，修改自原作者1.10.2版本Jun 9, 2025。"
+    plugin_desc = "定期转移下载器中的做种任务到另一个下载器，增加多标签逻辑开关，修改自原作者1.10.2版本Aug 6, 2025。"
     # 插件图标
     plugin_icon = "seed.png"
     # 插件版本
-    plugin_version = "1.0.4"
+    plugin_version = "1.0.5"
     # 插件作者
     plugin_author = "jxxghp,jonysun"
     # 作者主页
