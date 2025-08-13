@@ -53,6 +53,7 @@ class BrushConfig:
         self.include = config.get("include")
         self.exclude = config.get("exclude")
         self.size = config.get("size")
+        self.site_size = config.get("site_size")
         self.seeder = config.get("seeder")
         self.peers = config.get("peers")
         self.pubtime = config.get("pubtime")
@@ -107,6 +108,7 @@ class BrushConfig:
             "include",
             "exclude",
             "size",
+            "site_size",
             "seeder",
             "peers",
             "pubtime",
@@ -253,7 +255,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.0.1"
+    plugin_version = "1.0.2"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -2152,6 +2154,9 @@ class BrushFlowPlus(_PluginBase):
 
         torrents_size = self.__calculate_seeding_torrents_size(torrent_tasks=torrent_tasks)
 
+        # 站点保种体积计算,可以优化，在本函数外传入
+        site_sizes = self.__calculate_seeding_torrents_size_groupby_site(torrent_tasks=torrent_tasks)
+
         logger.info(f"正在准备种子刷流，数量 {len(torrents)}")
 
         # 过滤种子
@@ -2169,6 +2174,13 @@ class BrushFlowPlus(_PluginBase):
                                                                                      add_torrent_size=torrent.size)
             self.__log_brush_conditions(passed=size_condition_passed, reason=reason, torrent=torrent)
             if not size_condition_passed:
+                continue
+
+            # 判断种子能否通过站点保种体积条件
+            site_size_condition_passed, reason = self.__evaluate_site_size_condition_for_brush(
+                site_sizes=site_sizes, siteid=siteinfo.id, add_torrent_size=torrent.size)
+            self.__log_brush_conditions(passed=site_size_condition_passed, reason=reason, torrent=torrent)
+            if not site_size_condition_passed:
                 continue
 
             # 判断能否通过刷流条件
@@ -2413,6 +2425,40 @@ class BrushFlowPlus(_PluginBase):
                     return False, f"发布时间 {torrent.pubdate}，{pubdate_minutes:.0f} 分钟前，不在指定范围内"
 
         return True, None
+
+    def __evaluate_site_size_condition_for_brush(self, site_sizes: dict, siteid: int,
+                                            add_torrent_size: float = 0.0) -> Tuple[bool, Optional[str]]:
+        """
+        站点保种体积刷流条件
+        """
+        siteinfo = self.site_oper.get(siteid)
+        if not siteinfo:
+            logger.warning(f"未找到站点信息：{siteid}")
+            return True, None
+        site_name = siteinfo.name
+        
+        brush_config = self.__get_brush_config(sitename=site_name)
+        site_size_limit = getattr(brush_config, 'site_size', None)
+        try:
+            site_size_limit_gb = float(site_size_limit)
+        except (ValueError, TypeError):
+            logger.warning(f"站点 {site_name} 的 site_size 配置 '{site_size_limit}' 无效，视为无限制。")
+            return True, None # 配置无效，视为无限制
+
+        if site_size_limit_gb <= 0:
+             return True, None # 配置为0或负数，视为无限制
+        
+        site_current_size = self.__bytes_to_gb(site_sizes.get(site_name, 0.0))
+        add_torrent_size_gb = self.__bytes_to_gb(add_torrent_size)
+        total_size = site_current_size + add_torrent_size_gb
+        if total_size > float(site_size_limit):
+            reason = (f"当前站点 {site_name} 做种体积 {site_current_size:.1f} GB，"
+                        f"刷流种子大小 {add_torrent_size_gb:.1f} GB，"
+                        f"预计做种体积 {total_size:.1f} GB，"
+                        f"超过设定的站点保种体积 {site_size_limit} GB")
+            return False, reason
+        else:
+            return True, None
 
     @staticmethod
     def __log_brush_conditions(passed: bool, reason: str, torrent: Any = None):
@@ -3125,6 +3171,7 @@ class BrushFlowPlus(_PluginBase):
             "include": brush_config.include,
             "exclude": brush_config.exclude,
             "size": brush_config.size,
+            "site_size": brush_config.site_size,
             "seeder": brush_config.seeder,
             "peers": brush_config.peers,
             "pubtime": brush_config.pubtime,
@@ -3925,6 +3972,23 @@ class BrushFlowPlus(_PluginBase):
         计算保种种子体积
         """
         return sum(task.get("size", 0) for task in torrent_tasks.values() if not task.get("deleted", False))
+    
+    @staticmethod
+    def __calculate_seeding_torrents_size_groupby_site(self, torrent_tasks: Dict[str, dict]) -> Dict[str, float]:
+        """
+        计算保种种子体积，按站点分组
+        """
+        site_sizes: Dict[str, float] = {}
+        for task in torrent_tasks.values():
+            if not task.get("deleted", False):
+                site_name = task.get("site_name", "未知")
+                size = task.get("size", 0)
+                if site_name in site_sizes:
+                    site_sizes[site_name] += size
+                else:
+                    site_sizes[site_name] = size
+        return site_sizes
+
 
     def __auto_archive_tasks(self, torrent_tasks: Dict[str, dict]) -> None:
         """
