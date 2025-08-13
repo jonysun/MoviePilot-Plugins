@@ -14,5 +14,17 @@
             "v1.0.4": "增加多标签逻辑选择开关。",
             "v1.0.5": "同步官方插件更新。"
         }
+    },
+    "BrushFlowPlus": {
+        "name": "站点刷流（低频加强版）",
+        "description": "站点刷流，基于BrushFlowlow再次开发，自用",
+        "labels": "刷流",
+        "version": "1.0.1",
+        "icon": "brush.jpg",
+        "author": "jxxghp,InfinityPacer,jonysun",
+        "level": 2,
+        "history": {
+            "v1.0.1": "增加下载人数筛选，增加ratio通知。"
+        }
     }
 }
