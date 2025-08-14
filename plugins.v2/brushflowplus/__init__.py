@@ -255,7 +255,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.0.2"
+    plugin_version = "1.0.3"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -2178,7 +2178,7 @@ class BrushFlowPlus(_PluginBase):
 
             # 判断种子能否通过站点保种体积条件
             site_size_condition_passed, reason = self.__evaluate_site_size_condition_for_brush(
-                site_sizes=site_sizes, siteid=siteinfo.id, add_torrent_size=torrent.size)
+                site_sizes=site_sizes, siteid=siteid, add_torrent_size=torrent.size)
             self.__log_brush_conditions(passed=site_size_condition_passed, reason=reason, torrent=torrent)
             if not site_size_condition_passed:
                 continue
