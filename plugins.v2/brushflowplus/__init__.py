@@ -255,7 +255,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.0.3"
+    plugin_version = "1.0.4"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -3974,7 +3974,7 @@ class BrushFlowPlus(_PluginBase):
         return sum(task.get("size", 0) for task in torrent_tasks.values() if not task.get("deleted", False))
     
     @staticmethod
-    def __calculate_seeding_torrents_size_groupby_site(self, torrent_tasks: Dict[str, dict]) -> Dict[str, float]:
+    def __calculate_seeding_torrents_size_groupby_site(torrent_tasks: Dict[str, dict]) -> Dict[str, float]:
         """
         计算保种种子体积，按站点分组
         """
