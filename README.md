@@ -12,13 +12,13 @@ MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
 种子删除通知增加单种分享率
 
 ## todo
-RSS流url
+- [ ] RSS流url
 
-根据站点分享率动态分配site_size
+- [ ] 根据站点分享率动态分配site_size
 
-同步官方插件
+- [ ] 同步官方插件
 
-增加仪表盘和通知信息，对站点按时间汇总上传、下载量、分享率。
+- [X] 增加仪表盘和通知信息，对站点按时间汇总上传、下载量、分享率。
 
 ## 参考
 修改自原作者InfinityPacer 插件
