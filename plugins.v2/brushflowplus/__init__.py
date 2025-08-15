@@ -255,7 +255,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.0.7"
+    plugin_version = "1.0.8"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -874,10 +874,16 @@ class BrushFlowPlus(_PluginBase):
             })
 
         # 3.拼装完整页面
-        return [
+        return [                    
+                    {
+                        'component': 'VCol',
+                        'props': {
+                            'cols': 12,
+                        },
+                        'content': [
                             {
                                 'component': 'VTable',
-                                'props': {'hover': True, 'class': 'mt-4', 'cols': 12}, # 添加一些间距
+                                'props': {'hover': True}, # 添加一些间距
                                 'content': [
                                     # 表头
                                     {
@@ -900,6 +906,8 @@ class BrushFlowPlus(_PluginBase):
                                 ]
                             }
                         ]
+                    }
+                ]
 
 
     def get_dashboard(self, key: str, **kwargs) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], List[dict]]]:
