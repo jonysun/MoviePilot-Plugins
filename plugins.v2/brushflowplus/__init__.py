@@ -251,11 +251,11 @@ class BrushFlowPlus(_PluginBase):
     # 插件名称
     plugin_name = "站点刷流（低频加强版）"
     # 插件描述
-    plugin_desc = "站点刷流，基于BrushFlowlow再次开发，自用"
+    plugin_desc = "站点刷流自用版，基于BrushFlowlow再次开发"
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.0.4"
+    plugin_version = "1.0.5"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -509,6 +509,7 @@ class BrushFlowPlus(_PluginBase):
         total_active_uploaded = StringUtils.str_filesize(statistic_info.get("active_uploaded") or 0)
         # 活跃下载量
         total_active_downloaded = StringUtils.str_filesize(statistic_info.get("active_downloaded") or 0)
+
 
         return [
             # 总上传量
@@ -793,6 +794,114 @@ class BrushFlowPlus(_PluginBase):
             },
         ]
 
+    def __get_table_by_site(self) -> List[dict]:
+        """
+        获取按站点统计的表格数据
+        """
+        # 获取种子数据
+        
+            # 获取种子数据
+        torrents = self.get_data("torrents") or {}
+
+        # --- 上半部分：原有汇总元素 ---
+        if not torrents:
+            # 如果没有数据，只显示“暂无数据”
+            return [
+                        {
+                            'component': 'VCol',
+                            'props': {'cols': 12},
+                            'content': [
+                                {
+                                    'component': 'div',
+                                    'text': '暂无数据',
+                                    'props': {'class': 'text-center'},
+                                }
+                            ]
+                        }
+                    ]
+        
+            # --- 下半部分：按站点统计的表格 ---
+        
+        # 1. 聚合数据
+        site_stats = {}
+        for torrent_data in torrents.values():
+            site_name = torrent_data.get("site_name") or "未知站点"
+            if site_name not in site_stats:
+                site_stats[site_name] = {
+                    "uploaded": 0,
+                    "downloaded": 0,
+                    "ratio_sum_up": 0, # 用于计算平均分享率的分子 (总上传)
+                    "ratio_sum_down": 0, # 用于计算平均分享率的分母 (总下载)
+                    "active_count": 0,
+                    "deleted_count": 0
+                }
+
+            # 累加上传量、下载量
+            site_stats[site_name]["uploaded"] += torrent_data.get("uploaded", 0) or 0
+            site_stats[site_name]["downloaded"] += torrent_data.get("downloaded", 0) or 0
+            # 累加用于计算平均分享率的值
+            site_stats[site_name]["ratio_sum_up"] += torrent_data.get("uploaded", 0) or 0
+            site_stats[site_name]["ratio_sum_down"] += torrent_data.get("downloaded", 0) or 0
+
+            # 统计活跃/删除种子数
+            if torrent_data.get("deleted"):
+                site_stats[site_name]["deleted_count"] += 1
+            else:
+                site_stats[site_name]["active_count"] += 1
+
+        # 2. 生成表格行数据
+        site_rows = []
+        for site_name, stats in site_stats.items():
+            # 计算平均分享率
+            total_up = stats["ratio_sum_up"]
+            total_down = stats["ratio_sum_down"]
+            avg_ratio = 0.0
+            if total_down > 0:
+                avg_ratio = round(total_up / total_down, 2)
+            # 如果 total_down == 0, avg_ratio 保持为 0.0
+
+            site_rows.append({
+                'component': 'tr',
+                'props': {'class': 'text-sm'},
+                'content': [
+                    {'component': 'td', 'props': {'class': 'whitespace-nowrap break-keep text-high-emphasis'}, 'text': site_name},
+                    {'component': 'td', 'text': StringUtils.str_filesize(stats["uploaded"])},
+                    {'component': 'td', 'text': StringUtils.str_filesize(stats["downloaded"])},
+                    {'component': 'td', 'text': f"{avg_ratio:.2f}"}, # 保留两位小数
+                    {'component': 'td', 'text': str(stats["active_count"])},
+                    {'component': 'td', 'text': str(stats["deleted_count"])},
+                ]
+            })
+
+        # 3.拼装完整页面
+        return [
+                            {
+                                'component': 'VTable',
+                                'props': {'hover': True, 'class': 'mt-4'}, # 添加一些间距
+                                'content': [
+                                    # 表头
+                                    {
+                                        'component': 'thead',
+                                        'props': {'class': 'text-no-wrap'},
+                                        'content': [
+                                            {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '站点'},
+                                            {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '上传量'},
+                                            {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '下载量'},
+                                            {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '平均分享率'},
+                                            {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '活跃种子数'},
+                                            {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '已删除种子数'},
+                                        ]
+                                    },
+                                    # 表体
+                                    {
+                                        'component': 'tbody',
+                                        'content': site_rows
+                                    }
+                                ]
+                            }
+                        ]
+
+
     def get_dashboard(self, key: str, **kwargs) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], List[dict]]]:
         """
         获取插件仪表盘页面，需要返回：1、仪表板col配置字典；2、全局配置（自动刷新等）；3、仪表板页面元素配置json（含数据）
@@ -816,7 +925,7 @@ class BrushFlowPlus(_PluginBase):
         elements = [
             {
                 'component': 'VRow',
-                'content': self.__get_total_elements()
+                'content': self.__get_total_elements() + self.__get_table_by_site()
             }
         ]
         return cols, attrs, elements
@@ -3640,7 +3749,7 @@ class BrushFlowPlus(_PluginBase):
         if torrent_desc:
             msg_text = f"{msg_text}\n内容：{torrent_desc}"
         if ratio:
-            msg_text = f"{msg_text}\n分享率：{ratio}"
+            msg_text = f"{msg_text}\n分享率：{ratio:.2f}"
         if reason:
             msg_text = f"{msg_text}\n原因：{reason}"
 
@@ -3668,6 +3777,7 @@ class BrushFlowPlus(_PluginBase):
             "size": "大小",
             "pubdate": "发布时间",
             "seeders": "做种数",
+            "peers": "下载数",
             "volume_factor": "促销",
             "hit_and_run": "Hit&Run"
         }
