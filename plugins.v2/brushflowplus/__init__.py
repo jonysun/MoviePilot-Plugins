@@ -255,7 +255,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.0.8"
+    plugin_version = "1.0.9"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -931,9 +931,15 @@ class BrushFlowPlus(_PluginBase):
         attrs = {}
         # 拼装页面元素
         elements = [
+            # 第一行：汇总元素卡片
             {
                 'component': 'VRow',
-                'content': self.__get_total_elements() + self.__get_table_by_site()
+                'content': self.__get_total_elements() # 这里只放卡片
+            },
+            # 第二行：按站点统计的表格
+            {
+                'component': 'VRow',
+                'content': self.__get_table_by_site() # 这里只放包含表格的 VCol
             }
         ]
         return cols, attrs, elements
