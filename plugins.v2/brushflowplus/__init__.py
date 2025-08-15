@@ -255,7 +255,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.0.6"
+    plugin_version = "1.0.7"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -876,8 +876,8 @@ class BrushFlowPlus(_PluginBase):
         # 3.拼装完整页面
         return [
                             {
-                                'component': 'VCol',
-                                'props': {'cols': 12}, # 添加一些间距
+                                'component': 'VTable',
+                                'props': {'hover': True, 'class': 'mt-4', 'cols': 12}, # 添加一些间距
                                 'content': [
                                     # 表头
                                     {
