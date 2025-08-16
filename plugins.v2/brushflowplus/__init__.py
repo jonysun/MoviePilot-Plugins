@@ -256,7 +256,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.1.10"
+    plugin_version = "1.1.11"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -531,8 +531,8 @@ class BrushFlowPlus(_PluginBase):
             active_ratio = 0.0
 
         place_pamars = {
-                    'cols': 12,
-                    'md': 2,
+                    'cols': 15,
+                    'md': 3,
                     'sm': 6
                 }
 
@@ -885,7 +885,7 @@ class BrushFlowPlus(_PluginBase):
             return [
                         {
                             'component': 'VCol',
-                            'props': {'cols': 12},
+                            'props': {'cols': 15},
                             'content': [
                                 {
                                     'component': 'div',
@@ -953,7 +953,7 @@ class BrushFlowPlus(_PluginBase):
                     {
                         'component': 'VCol',
                         'props': {
-                            'cols': 12,
+                            'cols': 15,
                         },
                         'content': [
                             {
@@ -1000,7 +1000,7 @@ class BrushFlowPlus(_PluginBase):
         """
         # 列配置
         cols = {
-            "cols": 12
+            "cols": 15
         }
         # 全局配置
         attrs = {"refresh": 1800}
@@ -2165,7 +2165,7 @@ class BrushFlowPlus(_PluginBase):
                     {
                         'component': 'VCol',
                         'props': {
-                            'cols': 12,
+                            'cols': 15,
                         },
                         'content': [
                             {
