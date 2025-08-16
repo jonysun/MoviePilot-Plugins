@@ -255,7 +255,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.1.5"
+    plugin_version = "1.1.6"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -493,10 +493,12 @@ class BrushFlowPlus(_PluginBase):
         """
         # 统计数据
         statistic_info = self.__get_statistic_info()
+        total_uploaded_bytes = statistic_info.get("uploaded", 0)
+        total_downloaded_bytes = statistic_info.get("downloaded", 0)
         # 总上传量
-        total_uploaded = StringUtils.str_filesize(statistic_info.get("uploaded") or 0)
+        total_uploaded = StringUtils.str_filesize(total_uploaded_bytes)
         # 总下载量
-        total_downloaded = StringUtils.str_filesize(statistic_info.get("downloaded") or 0)
+        total_downloaded = StringUtils.str_filesize(total_downloaded_bytes)
         # 下载种子数
         total_count = statistic_info.get("count") or 0
         # 删除种子数
@@ -506,21 +508,23 @@ class BrushFlowPlus(_PluginBase):
         # 活跃种子数
         total_active = statistic_info.get("active") or 0
         # 活跃上传量
-        total_active_uploaded = StringUtils.str_filesize(statistic_info.get("active_uploaded") or 0)
+        total_active_uploaded_bytes = statistic_info.get("active_uploaded") or 0
+        total_active_uploaded = StringUtils.str_filesize(total_active_uploaded_bytes)
         # 活跃下载量
-        total_active_downloaded = StringUtils.str_filesize(statistic_info.get("active_downloaded") or 0)
+        total_active_downloaded_bytes = statistic_info.get("active_downloaded") or 0
+        total_active_downloaded = StringUtils.str_filesize(total_active_downloaded_bytes)
         # 计算总分享率
-        if total_downloaded > 0:
-            total_ratio = total_uploaded / total_downloaded
-        elif total_uploaded > 0:
+        if total_downloaded_bytes > 0:
+            total_ratio = total_uploaded_bytes / total_downloaded_bytes
+        elif total_uploaded_bytes > 0:
             total_ratio = 99.0
         else: # both are 0
             total_ratio = 0.0
 
         # 计算活跃分享率
-        if total_active_downloaded > 0:
-            active_ratio = total_active_uploaded / total_active_downloaded
-        elif total_active_uploaded > 0:
+        if total_active_downloaded_bytes > 0:
+            active_ratio = total_active_uploaded_bytes / total_active_downloaded_bytes
+        elif total_active_uploaded_bytes > 0:
             active_ratio = 99.0
         else: # both are 0
             active_ratio = 0.0
