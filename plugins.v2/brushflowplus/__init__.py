@@ -255,7 +255,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.1.4"
+    plugin_version = "1.1.5"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -509,15 +509,100 @@ class BrushFlowPlus(_PluginBase):
         total_active_uploaded = StringUtils.str_filesize(statistic_info.get("active_uploaded") or 0)
         # 活跃下载量
         total_active_downloaded = StringUtils.str_filesize(statistic_info.get("active_downloaded") or 0)
+        # 计算总分享率
+        if total_downloaded > 0:
+            total_ratio = total_uploaded / total_downloaded
+        elif total_uploaded > 0:
+            total_ratio = 99.0
+        else: # both are 0
+            total_ratio = 0.0
+
+        # 计算活跃分享率
+        if total_active_downloaded > 0:
+            active_ratio = total_active_uploaded / total_active_downloaded
+        elif total_active_uploaded > 0:
+            active_ratio = 99.0
+        else: # both are 0
+            active_ratio = 0.0
 
 
         return [
+            # 总分享率 / 活跃分享率
+            {
+                'component': 'VCol',
+                'props': {
+                    'cols': 12,
+                    'md': 2,
+                    'sm': 6
+                },
+                'content': [
+                    {
+                        'component': 'VCard',
+                        'props': {
+                            'variant': 'tonal',
+                        },
+                        'content': [
+                            {
+                                'component': 'VCardText',
+                                'props': {
+                                    'class': 'd-flex align-center',
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VAvatar',
+                                        'props': {
+                                            'rounded': True,
+                                            'variant': 'text',
+                                            'class': 'me-3'
+                                        },
+                                        'content': [
+                                            {
+                                                'component': 'VImg',
+                                                'props': {
+                                                    'src': '/plugin_icon/Ombi.png'
+                                                }
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        'component': 'div',
+                                        'content': [
+                                            {
+                                                'component': 'span',
+                                                'props': {
+                                                    'class': 'text-caption'
+                                                },
+                                                'text': '分享率 / 活跃'
+                                            },
+                                            {
+                                                'component': 'div',
+                                                'props': {
+                                                    'class': 'd-flex align-center flex-wrap'
+                                                },
+                                                'content': [
+                                                    {
+                                                        'component': 'span',
+                                                        'props': {
+                                                            'class': 'text-h6'
+                                                        },
+                                                        'text': f"{total_ratio:.2f} / {active_ratio:.2f}"
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                ]
+            },   
             # 总上传量
             {
                 'component': 'VCol',
                 'props': {
                     'cols': 12,
-                    'md': 3,
+                    'md': 2,
                     'sm': 6
                 },
                 'content': [
@@ -587,7 +672,7 @@ class BrushFlowPlus(_PluginBase):
                 'component': 'VCol',
                 'props': {
                     'cols': 12,
-                    'md': 3,
+                    'md': 2,
                     'sm': 6
                 },
                 'content': [
@@ -657,7 +742,7 @@ class BrushFlowPlus(_PluginBase):
                 'component': 'VCol',
                 'props': {
                     'cols': 12,
-                    'md': 3,
+                    'md': 2,
                     'sm': 6
                 },
                 'content': [
@@ -727,7 +812,7 @@ class BrushFlowPlus(_PluginBase):
                 'component': 'VCol',
                 'props': {
                     'cols': 12,
-                    'md': 3,
+                    'md': 2,
                     'sm': 6
                 },
                 'content': [
@@ -908,7 +993,6 @@ class BrushFlowPlus(_PluginBase):
                         ]
                     }
                 ]
-
 
     def get_dashboard(self, key: str, **kwargs) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], List[dict]]]:
         """
