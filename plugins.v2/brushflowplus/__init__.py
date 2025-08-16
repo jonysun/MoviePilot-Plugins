@@ -2403,6 +2403,8 @@ class BrushFlowPlus(_PluginBase):
                 logger.warning(f"{torrent.title} 添加刷流任务失败！")
                 continue
 
+            getattr(torrent, 'vote_average', 0.0) or 0.0
+
             # 触发刷流下载时间并保存任务信息
             torrent_task = {
                 "site": siteinfo.id,
@@ -2430,7 +2432,8 @@ class BrushFlowPlus(_PluginBase):
                 "freedate_diff": torrent.freedate_diff,
                 # "labels": torrent.labels,
                 # "pri_order": torrent.pri_order,
-                # "category": torrent.category,
+                "category": torrent.category,
+                "vote_average": vote_average,
                 "ratio": 0,
                 "downloaded": 0,
                 "uploaded": 0,
@@ -3877,12 +3880,17 @@ class BrushFlowPlus(_PluginBase):
             "seeders": "做种数",
             "peers": "下载数",
             "volume_factor": "促销",
-            "hit_and_run": "Hit&Run"
+            "hit_and_run": "Hit&Run",
+            "category": "分类",
+            "vote_average": "评分"
         }
+
         for key in label_mapping:
             value = get_data(key)
             if key == "size" and value and str(value).replace(".", "", 1).isdigit():
                 value = StringUtils.str_filesize(value)
+            if key == "vote_average" and value is not None:
+                value = f"{value:.1f}"
             if value:
                 msg_parts.append(f"{label_mapping[key]}：{'是' if key == 'hit_and_run' and value else value}")
 
