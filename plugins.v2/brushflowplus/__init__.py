@@ -255,7 +255,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.1.3"
+    plugin_version = "1.1.4"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -830,8 +830,6 @@ class BrushFlowPlus(_PluginBase):
                 site_stats[site_name] = {
                     "uploaded": 0,
                     "downloaded": 0,
-                    "ratio_sum_up": 0, # 用于计算平均分享率的分子 (总上传)
-                    "ratio_sum_down": 0, # 用于计算平均分享率的分母 (总下载)
                     "active_count": 0,
                     "deleted_count": 0,
                     "size": 0
@@ -840,25 +838,21 @@ class BrushFlowPlus(_PluginBase):
             # 累加上传量、下载量
             site_stats[site_name]["uploaded"] += torrent_data.get("uploaded", 0) or 0
             site_stats[site_name]["downloaded"] += torrent_data.get("downloaded", 0) or 0
-            # 累加用于计算平均分享率的值
-            site_stats[site_name]["ratio_sum_up"] += torrent_data.get("uploaded", 0) or 0
-            site_stats[site_name]["ratio_sum_down"] += torrent_data.get("downloaded", 0) or 0
-            
-            # 累加做种体积
-            site_stats[site_name]["size"] += torrent_data.get("size", 0) or 0
 
             # 统计活跃/删除种子数
             if torrent_data.get("deleted"):
                 site_stats[site_name]["deleted_count"] += 1
             else:
                 site_stats[site_name]["active_count"] += 1
+                # 累加做种体积
+                site_stats[site_name]["size"] += torrent_data.get("size", 0) or 0
 
         # 2. 生成表格行数据
         site_rows = []
         for site_name, stats in site_stats.items():
             # 计算平均分享率
-            total_up = stats["ratio_sum_up"]
-            total_down = stats["ratio_sum_down"]
+            total_up = stats["uploaded"]
+            total_down = stats["downloaded"]
             avg_ratio = 0.0
             if total_down > 0:
                 avg_ratio = round(total_up / total_down, 2)
