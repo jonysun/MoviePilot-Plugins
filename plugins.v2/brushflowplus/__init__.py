@@ -255,7 +255,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.1.7"
+    plugin_version = "1.1.8"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -529,16 +529,18 @@ class BrushFlowPlus(_PluginBase):
         else: # both are 0
             active_ratio = 0.0
 
+        place_pamars = {
+                    'cols': 10,
+                    'md': 2,
+                    'sm': 5
+                }
+
 
         return [
             # 总分享率 / 活跃分享率
             {
                 'component': 'VCol',
-                'props': {
-                    'cols': 12,
-                    'md': 2,
-                    'sm': 6
-                },
+                'props': place_pamars,
                 'content': [
                     {
                         'component': 'VCard',
@@ -604,11 +606,7 @@ class BrushFlowPlus(_PluginBase):
             # 总上传量
             {
                 'component': 'VCol',
-                'props': {
-                    'cols': 12,
-                    'md': 2,
-                    'sm': 6
-                },
+                'props': place_pamars,
                 'content': [
                     {
                         'component': 'VCard',
@@ -674,11 +672,7 @@ class BrushFlowPlus(_PluginBase):
             # 总下载量
             {
                 'component': 'VCol',
-                'props': {
-                    'cols': 12,
-                    'md': 2,
-                    'sm': 6
-                },
+                'props': place_pamars,
                 'content': [
                     {
                         'component': 'VCard',
@@ -744,11 +738,7 @@ class BrushFlowPlus(_PluginBase):
             # 下载种子数
             {
                 'component': 'VCol',
-                'props': {
-                    'cols': 12,
-                    'md': 2,
-                    'sm': 6
-                },
+                'props': place_pamars,
                 'content': [
                     {
                         'component': 'VCard',
@@ -814,11 +804,7 @@ class BrushFlowPlus(_PluginBase):
             # 删除种子数
             {
                 'component': 'VCol',
-                'props': {
-                    'cols': 12,
-                    'md': 2,
-                    'sm': 6
-                },
+                'props': place_pamars,
                 'content': [
                     {
                         'component': 'VCard',
@@ -898,7 +884,7 @@ class BrushFlowPlus(_PluginBase):
             return [
                         {
                             'component': 'VCol',
-                            'props': {'cols': 12},
+                            'props': {'cols': 10},
                             'content': [
                                 {
                                     'component': 'div',
@@ -966,7 +952,7 @@ class BrushFlowPlus(_PluginBase):
                     {
                         'component': 'VCol',
                         'props': {
-                            'cols': 12,
+                            'cols': 10,
                         },
                         'content': [
                             {
@@ -1013,10 +999,10 @@ class BrushFlowPlus(_PluginBase):
         """
         # 列配置
         cols = {
-            "cols": 12
+            "cols": 10
         }
         # 全局配置
-        attrs = {}
+        attrs = {"refresh": 1800}
         # 拼装页面元素
         elements = [
             # 第一行：汇总元素卡片
@@ -2155,7 +2141,7 @@ class BrushFlowPlus(_PluginBase):
                     {
                         'component': 'VCol',
                         'props': {
-                            'cols': 12,
+                            'cols': 10,
                         },
                         'content': [
                             {
