@@ -255,7 +255,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.1.2"
+    plugin_version = "1.1.3"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -833,7 +833,8 @@ class BrushFlowPlus(_PluginBase):
                     "ratio_sum_up": 0, # 用于计算平均分享率的分子 (总上传)
                     "ratio_sum_down": 0, # 用于计算平均分享率的分母 (总下载)
                     "active_count": 0,
-                    "deleted_count": 0
+                    "deleted_count": 0,
+                    "size": 0
                 }
 
             # 累加上传量、下载量
