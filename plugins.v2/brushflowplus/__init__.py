@@ -256,7 +256,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.1.12"
+    plugin_version = "1.1.13"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -532,7 +532,7 @@ class BrushFlowPlus(_PluginBase):
 
         place_pamars = {
                     'cols': 12,
-                    'md': 2,
+                    # 'md': 2,
                     'sm': 6
                 }
 
@@ -1018,6 +1018,9 @@ class BrushFlowPlus(_PluginBase):
             # 第一行：汇总元素卡片
             {
                 'component': 'VRow',
+                'props': {
+                'justify': 'center' # 使 5 个 VCol 在行内居中
+            },
                 'content': self.__get_total_elements() # 这里只放卡片
             }
         ]
