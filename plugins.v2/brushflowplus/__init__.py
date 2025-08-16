@@ -255,7 +255,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.1.2"
+    plugin_version = "1.1.1"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -839,9 +839,8 @@ class BrushFlowPlus(_PluginBase):
             # 累加上传量、下载量
             site_stats[site_name]["uploaded"] += torrent_data.get("uploaded", 0) or 0
             site_stats[site_name]["downloaded"] += torrent_data.get("downloaded", 0) or 0
-            # 累加用于计算平均分享率的值
-            site_stats[site_name]["ratio_sum_up"] += torrent_data.get("uploaded", 0) or 0
-            site_stats[site_name]["ratio_sum_down"] += torrent_data.get("downloaded", 0) or 0
+            # 累加做种体积
+            site_stats[site_name]["size"] += torrent_data.get("size", 0) or 0
 
             # 统计活跃/删除种子数
             if torrent_data.get("deleted"):
@@ -853,8 +852,8 @@ class BrushFlowPlus(_PluginBase):
         site_rows = []
         for site_name, stats in site_stats.items():
             # 计算平均分享率
-            total_up = stats["ratio_sum_up"]
-            total_down = stats["ratio_sum_down"]
+            total_up = stats["uploaded"]
+            total_down = stats["downloaded"]
             avg_ratio = 0.0
             if total_down > 0:
                 avg_ratio = round(total_up / total_down, 2)
@@ -865,6 +864,7 @@ class BrushFlowPlus(_PluginBase):
                 'props': {'class': 'text-sm'},
                 'content': [
                     {'component': 'td', 'props': {'class': 'whitespace-nowrap break-keep text-high-emphasis'}, 'text': site_name},
+                    {'component': 'td', 'text': StringUtils.str_filesize(stats["size"])},
                     {'component': 'td', 'text': StringUtils.str_filesize(stats["uploaded"])},
                     {'component': 'td', 'text': StringUtils.str_filesize(stats["downloaded"])},
                     {'component': 'td', 'text': f"{avg_ratio:.2f}"}, # 保留两位小数
@@ -891,6 +891,7 @@ class BrushFlowPlus(_PluginBase):
                                         'props': {'class': 'text-no-wrap'},
                                         'content': [
                                             {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '站点'},
+                                            {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '种子体积'},
                                             {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '上传量'},
                                             {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '下载量'},
                                             {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '平均分享率'},
