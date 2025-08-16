@@ -530,9 +530,9 @@ class BrushFlowPlus(_PluginBase):
             active_ratio = 0.0
 
         place_pamars = {
-                    'cols': 10,
+                    'cols': 12,
                     'md': 2,
-                    'sm': 5
+                    'sm': 6
                 }
 
 
@@ -884,7 +884,7 @@ class BrushFlowPlus(_PluginBase):
             return [
                         {
                             'component': 'VCol',
-                            'props': {'cols': 10},
+                            'props': {'cols': 12},
                             'content': [
                                 {
                                     'component': 'div',
@@ -952,7 +952,7 @@ class BrushFlowPlus(_PluginBase):
                     {
                         'component': 'VCol',
                         'props': {
-                            'cols': 10,
+                            'cols': 12,
                         },
                         'content': [
                             {
@@ -999,7 +999,7 @@ class BrushFlowPlus(_PluginBase):
         """
         # 列配置
         cols = {
-            "cols": 10
+            "cols": 12
         }
         # 全局配置
         attrs = {"refresh": 1800}
@@ -2141,7 +2141,7 @@ class BrushFlowPlus(_PluginBase):
                     {
                         'component': 'VCol',
                         'props': {
-                            'cols': 10,
+                            'cols': 12,
                         },
                         'content': [
                             {
