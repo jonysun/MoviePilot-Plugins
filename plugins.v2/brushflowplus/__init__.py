@@ -256,7 +256,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.1.11"
+    plugin_version = "1.1.12"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -531,11 +531,12 @@ class BrushFlowPlus(_PluginBase):
             active_ratio = 0.0
 
         place_pamars = {
-                    'cols': 15,
-                    'md': 3,
+                    'cols': 12,
+                    'md': 2,
                     'sm': 6
                 }
 
+        vcard_class = 'd-flex flex-grow-1 flex-shrink-1 flex-basis-20'
 
         return [
             # 总分享率 / 活跃分享率
@@ -548,6 +549,7 @@ class BrushFlowPlus(_PluginBase):
                         'props': {
                             'variant': 'tonal',
                         },
+                        'class': vcard_class,
                         'content': [
                             {
                                 'component': 'VCardText',
@@ -614,6 +616,7 @@ class BrushFlowPlus(_PluginBase):
                         'props': {
                             'variant': 'tonal',
                         },
+                        'class': vcard_class,
                         'content': [
                             {
                                 'component': 'VCardText',
@@ -680,6 +683,7 @@ class BrushFlowPlus(_PluginBase):
                         'props': {
                             'variant': 'tonal',
                         },
+                        'class': vcard_class,
                         'content': [
                             {
                                 'component': 'VCardText',
@@ -746,6 +750,7 @@ class BrushFlowPlus(_PluginBase):
                         'props': {
                             'variant': 'tonal',
                         },
+                        'class': vcard_class,
                         'content': [
                             {
                                 'component': 'VCardText',
@@ -812,6 +817,7 @@ class BrushFlowPlus(_PluginBase):
                         'props': {
                             'variant': 'tonal',
                         },
+                        'class': vcard_class,
                         'content': [
                             {
                                 'component': 'VCardText',
@@ -885,7 +891,7 @@ class BrushFlowPlus(_PluginBase):
             return [
                         {
                             'component': 'VCol',
-                            'props': {'cols': 15},
+                            'props': {'cols': 12},
                             'content': [
                                 {
                                     'component': 'div',
@@ -953,7 +959,7 @@ class BrushFlowPlus(_PluginBase):
                     {
                         'component': 'VCol',
                         'props': {
-                            'cols': 15,
+                            'cols': 12,
                         },
                         'content': [
                             {
@@ -1000,7 +1006,7 @@ class BrushFlowPlus(_PluginBase):
         """
         # 列配置
         cols = {
-            "cols": 15
+            "cols": 12
         }
         # 全局配置
         attrs = {"refresh": 1800}
@@ -2165,7 +2171,7 @@ class BrushFlowPlus(_PluginBase):
                     {
                         'component': 'VCol',
                         'props': {
-                            'cols': 15,
+                            'cols': 12,
                         },
                         'content': [
                             {
