@@ -255,7 +255,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.1.6"
+    plugin_version = "1.1.7"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -2407,7 +2407,7 @@ class BrushFlowPlus(_PluginBase):
                 logger.warning(f"{torrent.title} 添加刷流任务失败！")
                 continue
 
-            getattr(torrent, 'vote_average', 0.0) or 0.0
+            vote_average = getattr(torrent, 'vote_average', 0.0) or 0.0
 
             # 触发刷流下载时间并保存任务信息
             torrent_task = {
