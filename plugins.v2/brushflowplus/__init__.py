@@ -41,6 +41,7 @@ class BrushConfig:
     def __init__(self, config: dict, process_site_config=True):
         self.enabled = config.get("enabled", False)
         self.notify = config.get("notify", True)
+        self.show_site_data = config.get("show_site_data", True)
         self.onlyonce = config.get("onlyonce", False)
         self.brushsites = config.get("brushsites", [])
         self.downloader = config.get("downloader")
@@ -255,7 +256,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.1.8"
+    plugin_version = "1.1.9"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -1003,19 +1004,23 @@ class BrushFlowPlus(_PluginBase):
         }
         # 全局配置
         attrs = {"refresh": 1800}
+
         # 拼装页面元素
         elements = [
             # 第一行：汇总元素卡片
             {
                 'component': 'VRow',
                 'content': self.__get_total_elements() # 这里只放卡片
-            },
-            # 第二行：按站点统计的表格
-            {
-                'component': 'VRow',
-                'content': self.__get_table_by_site() # 这里只放包含表格的 VCol
             }
         ]
+
+        if getattr(self.brush_config, 'show_site_data', True): # 使用 getattr 安全地获取属性，默认为 False
+            elements.append({
+                # 第二行：按站点统计的表格 (根据配置显示)
+                'component': 'VRow',
+                'content': self.__get_table_by_site() # 确保这个方法返回的是包含 VCol 的列表
+            })
+
         return cols, attrs, elements
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
@@ -1040,7 +1045,7 @@ class BrushFlowPlus(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 4
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -1056,7 +1061,7 @@ class BrushFlowPlus(_PluginBase):
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 4
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -1068,11 +1073,27 @@ class BrushFlowPlus(_PluginBase):
                                     }
                                 ]
                             },
+                                                        {
+                                'component': 'VCol',
+                                'props': {
+                                    'cols': 12,
+                                    'md': 3
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VSwitch',
+                                        'props': {
+                                            'model': 'show_site_data',
+                                            'label': '仪表板显示站点刷流数据',
+                                        }
+                                    }
+                                ]
+                            },
                             {
                                 'component': 'VCol',
                                 'props': {
                                     'cols': 12,
-                                    'md': 4
+                                    'md': 3
                                 },
                                 'content': [
                                     {
@@ -2044,6 +2065,7 @@ class BrushFlowPlus(_PluginBase):
         ], {
             "enabled": False,
             "notify": True,
+            "show_site_data": True,
             "onlyonce": False,
             "clear_task": False,
             "delete_except_tags": f"{settings.TORRENT_TAG},H&R" if settings.TORRENT_TAG else "H&R",
@@ -3359,6 +3381,7 @@ class BrushFlowPlus(_PluginBase):
         config_mapping = {
             "onlyonce": brush_config.onlyonce,
             "enabled": brush_config.enabled,
+            "show_site_data": brush_config.show_site_data,
             "notify": brush_config.notify,
             "brushsites": brush_config.brushsites,
             "downloader": brush_config.downloader,
