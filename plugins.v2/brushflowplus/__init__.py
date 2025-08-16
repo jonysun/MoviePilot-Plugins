@@ -256,7 +256,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.1.9"
+    plugin_version = "1.1.10"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -1005,6 +1005,8 @@ class BrushFlowPlus(_PluginBase):
         # 全局配置
         attrs = {"refresh": 1800}
 
+        brush_config = self.__get_brush_config()
+
         # 拼装页面元素
         elements = [
             # 第一行：汇总元素卡片
@@ -1014,7 +1016,7 @@ class BrushFlowPlus(_PluginBase):
             }
         ]
 
-        if getattr(self.brush_config, 'show_site_data', True): # 使用 getattr 安全地获取属性，默认为 False
+        if getattr(brush_config, 'show_site_data', True): # 使用 getattr 安全地获取属性，默认为 False
             elements.append({
                 # 第二行：按站点统计的表格 (根据配置显示)
                 'component': 'VRow',
