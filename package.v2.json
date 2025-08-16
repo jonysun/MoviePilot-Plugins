@@ -19,7 +19,7 @@
         "name": "站点刷流（低频加强版）",
         "description": "站点刷流，基于BrushFlowlow再次开发，自用",
         "labels": "刷流",
-        "version": "1.1.13",
+        "version": "1.1.14",
         "icon": "brush.jpg",
         "author": "jxxghp,InfinityPacer,jonysun",
         "level": 2,
@@ -27,7 +27,7 @@
             "v1.0.1": "增加下载人数筛选，增加ratio通知。",
             "v1.0.2": "增加站点独立保种体积配置。",
             "v1.0.5": "增加仪表盘按站点分类汇总",
-            "v1.1.13": "优化仪表盘显示问题"
+            "v1.1.14": "优化仪表盘显示问题"
         }
     }
 }

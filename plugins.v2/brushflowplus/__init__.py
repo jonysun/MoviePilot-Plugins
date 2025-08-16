@@ -256,7 +256,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.1.13"
+    plugin_version = "1.1.14"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -548,8 +548,8 @@ class BrushFlowPlus(_PluginBase):
                         'component': 'VCard',
                         'props': {
                             'variant': 'tonal',
+                            'class': vcard_class,
                         },
-                        'class': vcard_class,
                         'content': [
                             {
                                 'component': 'VCardText',
@@ -615,8 +615,8 @@ class BrushFlowPlus(_PluginBase):
                         'component': 'VCard',
                         'props': {
                             'variant': 'tonal',
+                            'class': vcard_class,
                         },
-                        'class': vcard_class,
                         'content': [
                             {
                                 'component': 'VCardText',
@@ -682,8 +682,8 @@ class BrushFlowPlus(_PluginBase):
                         'component': 'VCard',
                         'props': {
                             'variant': 'tonal',
+                            'class': vcard_class,
                         },
-                        'class': vcard_class,
                         'content': [
                             {
                                 'component': 'VCardText',
@@ -749,8 +749,8 @@ class BrushFlowPlus(_PluginBase):
                         'component': 'VCard',
                         'props': {
                             'variant': 'tonal',
+                            'class': vcard_class,
                         },
-                        'class': vcard_class,
                         'content': [
                             {
                                 'component': 'VCardText',
@@ -816,8 +816,8 @@ class BrushFlowPlus(_PluginBase):
                         'component': 'VCard',
                         'props': {
                             'variant': 'tonal',
+                            'class': vcard_class,
                         },
-                        'class': vcard_class,
                         'content': [
                             {
                                 'component': 'VCardText',
