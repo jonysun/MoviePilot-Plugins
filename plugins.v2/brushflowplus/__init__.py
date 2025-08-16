@@ -255,7 +255,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.1.1"
+    plugin_version = "1.1.2"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -839,6 +839,10 @@ class BrushFlowPlus(_PluginBase):
             # 累加上传量、下载量
             site_stats[site_name]["uploaded"] += torrent_data.get("uploaded", 0) or 0
             site_stats[site_name]["downloaded"] += torrent_data.get("downloaded", 0) or 0
+            # 累加用于计算平均分享率的值
+            site_stats[site_name]["ratio_sum_up"] += torrent_data.get("uploaded", 0) or 0
+            site_stats[site_name]["ratio_sum_down"] += torrent_data.get("downloaded", 0) or 0
+            
             # 累加做种体积
             site_stats[site_name]["size"] += torrent_data.get("size", 0) or 0
 
@@ -852,8 +856,8 @@ class BrushFlowPlus(_PluginBase):
         site_rows = []
         for site_name, stats in site_stats.items():
             # 计算平均分享率
-            total_up = stats["uploaded"]
-            total_down = stats["downloaded"]
+            total_up = stats["ratio_sum_up"]
+            total_down = stats["ratio_sum_down"]
             avg_ratio = 0.0
             if total_down > 0:
                 avg_ratio = round(total_up / total_down, 2)
