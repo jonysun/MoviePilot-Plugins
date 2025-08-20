@@ -583,7 +583,7 @@ class BrushFlowPlus(_PluginBase):
                                             {
                                                 'component': 'VImg',
                                                 'props': {
-                                                    'src': '/plugin_icon/Ombi.png'
+                                                    'src': '/plugin_icon/FileBrowser.png'
                                                 }
                                             }
                                         ]
