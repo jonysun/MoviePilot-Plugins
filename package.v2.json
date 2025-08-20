@@ -19,7 +19,7 @@
         "name": "站点刷流（低频加强版）",
         "description": "站点刷流，基于BrushFlowlow再次开发，自用",
         "labels": "刷流",
-        "version": "1.1.16",
+        "version": "1.1.17",
         "icon": "brush.jpg",
         "author": "jxxghp,InfinityPacer,jonysun",
         "level": 2,
