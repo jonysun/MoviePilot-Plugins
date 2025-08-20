@@ -532,6 +532,19 @@ class BrushFlowPlus(_PluginBase):
         else: # both are 0
             active_ratio = 0.0
 
+        # 刷流空间
+        brush_config = self.__get_brush_config()
+        if brush_config.disksize:
+            # 如果配置了刷流空间，则使用配置的值
+            disk_size_gb = brush_config.disksize
+            disk_size_str = StringUtils.str_filesize(disk_size_gb * (1024 ** 3))  # 转换为GB
+            disk_used_gb = total_active_downloaded_bytes / (1024 ** 3)  # 转换为GB
+            used_percentage = (disk_used_gb / disk_size_gb) * 100 if disk_size_gb > 0 else 0
+            used_per_str = f"{used_percentage:.2f}%"
+        else:
+            disk_size_str = "inf"
+            used_per_str = "0%"
+
         place_pamars = {
                     'cols': 12,
                     'md': 2,
@@ -541,6 +554,73 @@ class BrushFlowPlus(_PluginBase):
         vcard_class = 'd-flex flex-grow-1 flex-shrink-1 flex-basis-20'
 
         return [
+            # 刷流空间 / 使用率
+            {
+                'component': 'VCol',
+                'props': place_pamars,
+                'content': [
+                    {
+                        'component': 'VCard',
+                        'props': {
+                            'variant': 'tonal',
+                            'class': vcard_class,
+                        },
+                        'content': [
+                            {
+                                'component': 'VCardText',
+                                'props': {
+                                    'class': 'd-flex align-center',
+                                },
+                                'content': [
+                                    {
+                                        'component': 'VAvatar',
+                                        'props': {
+                                            'rounded': True,
+                                            'variant': 'text',
+                                            'class': 'me-3'
+                                        },
+                                        'content': [
+                                            {
+                                                'component': 'VImg',
+                                                'props': {
+                                                    'src': '/plugin_icon/Ombi.png'
+                                                }
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        'component': 'div',
+                                        'content': [
+                                            {
+                                                'component': 'span',
+                                                'props': {
+                                                    'class': 'text-caption'
+                                                },
+                                                'text': '刷流空间 / 使用率'
+                                            },
+                                            {
+                                                'component': 'div',
+                                                'props': {
+                                                    'class': 'd-flex align-center flex-wrap'
+                                                },
+                                                'content': [
+                                                    {
+                                                        'component': 'span',
+                                                        'props': {
+                                                            'class': 'text-h6'
+                                                        },
+                                                        'text': f"{disk_size_str} / {used_per_str}"
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                ]
+            }, 
             # 总分享率 / 活跃分享率
             {
                 'component': 'VCol',
@@ -942,12 +1022,29 @@ class BrushFlowPlus(_PluginBase):
                 avg_ratio = round(total_up / total_down, 2)
             # 如果 total_down == 0, avg_ratio 保持为 0.0
 
+            # 初始化时获取并存储该站点的 site_size 限制
+            brush_config_for_site = self.__get_brush_config(sitename=site_name)
+            site_size_limit_raw = getattr(brush_config_for_site, 'site_size', None)
+            # 尝试解析 site_size 为浮点数，如果无效则设为 None 或 0
+            try:
+                site_size_limit_gb = float(site_size_limit_raw) if site_size_limit_raw is not None and site_size_limit_raw != "" else None
+            except (ValueError, TypeError):
+                site_size_limit_gb = None # 或者 0.0
+
+            if site_size_limit_gb is not None and site_size_limit_gb > 0:
+            # 如果设置了有效的上限，则显示格式化后的大小
+                size_limit_str = StringUtils.str_filesize(site_size_limit_gb * (1024 ** 3)) # 将 GB 转换为字节进行格式化
+            else:
+            # 如果未设置或无效，则显示 '无限制' 或 'N/A'
+                size_limit_str = "无限制"
+
             site_rows.append({
                 'component': 'tr',
                 'props': {'class': 'text-sm'},
                 'content': [
                     {'component': 'td', 'props': {'class': 'whitespace-nowrap break-keep text-high-emphasis'}, 'text': site_name},
                     {'component': 'td', 'text': StringUtils.str_filesize(stats["size"])},
+                    {'component': 'td', 'text': size_limit_str},
                     {'component': 'td', 'text': StringUtils.str_filesize(stats["uploaded"])},
                     {'component': 'td', 'text': StringUtils.str_filesize(stats["downloaded"])},
                     {'component': 'td', 'text': f"{avg_ratio:.2f}"}, # 保留两位小数
