@@ -55,6 +55,7 @@ class BrushConfig:
         self.exclude = config.get("exclude")
         self.size = config.get("size")
         self.site_size = config.get("site_size")
+        self.sequential = config.get("sequential")
         self.seeder = config.get("seeder")
         self.peers = config.get("peers")
         self.pubtime = config.get("pubtime")
@@ -110,6 +111,7 @@ class BrushConfig:
             "exclude",
             "size",
             "site_size",
+            "sequential",
             "seeder",
             "peers",
             "pubtime",
@@ -256,7 +258,7 @@ class BrushFlowPlus(_PluginBase):
     # 插件图标
     plugin_icon = "brush.jpg"
     # 插件版本
-    plugin_version = "1.1.15"
+    plugin_version = "1.1.16"
     # 插件作者
     plugin_author = "jxxghp,InfinityPacer,jonysun"
     # 作者主页
@@ -2329,9 +2331,51 @@ class BrushFlowPlus(_PluginBase):
                     site_infos.append(siteinfo)
 
             # 根据是否开启顺序刷流来决定是否需要打乱顺序
-            if not brush_config.brush_sequential:
-                random.shuffle(site_infos)
+            # if not brush_config.brush_sequential:
+            #     random.shuffle(site_infos)
 
+            if brush_config.brush_sequential:
+                logger.info("已开启顺序刷流，将按照配置的站点顺序进行刷流")
+            else:
+                logger.info("未开启顺序刷流，将根据站点优先级或随机排序")
+                sites_with_priority = []
+                sites_without_priority = []
+                for site in site_infos:
+                    # 获取该站点的特定配置
+                    site_specific_config = self.__get_brush_config(sitename=site.name)
+                    # 获取 sequential 值，如果未设置则为 None
+                    priority = getattr(site_specific_config, 'sequential', None)
+
+                    if priority is not None:
+                        # 尝试将 priority 转换为整数，如果失败则视为未设置
+                        try:
+                            priority_int = int(priority)
+                            sites_with_priority.append((site, priority_int))
+                        except (ValueError, TypeError):
+                            logger.warning(f"站点 {site.name} 的 sequential 值 '{priority}' 无效，将视为未设置优先级")
+                            sites_without_priority.append(site)
+                    else:
+                        sites_without_priority.append(site)
+                
+                # 2. 对有优先级的站点按 priority (sequential 值) 升序排序
+                sites_with_priority.sort(key=lambda x: x[1]) # x[1] 是 priority 值
+                # 提取排序后的站点对象列表
+                sorted_sites_with_priority = [site for site, _ in sites_with_priority]
+
+                # 3. 对没有优先级设置的站点进行随机打乱
+                if sites_without_priority:
+                    random.shuffle(sites_without_priority)
+                    logger.info(f"以下站点未设置优先级，将随机排序: {[s.name for s in sites_without_priority]}")
+                else:
+                    logger.info("所有站点均已设置优先级")
+
+                # 4. 合并列表：优先级排序的站点 + 随机排序的站点
+                site_infos = sorted_sites_with_priority + sites_without_priority
+
+                # 记录最终的处理顺序
+                ordered_site_names = [site.name for site in site_infos]
+                logger.info(f"站点刷流顺序 (考虑优先级和随机): {', '.join(ordered_site_names)}")
+                    
             logger.info(f"即将针对站点 {', '.join(site.name for site in site_infos)} 开始刷流")
 
             # 获取订阅标题
