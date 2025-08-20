@@ -1072,6 +1072,7 @@ class BrushFlowPlus(_PluginBase):
                                         'content': [
                                             {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '站点'},
                                             {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '种子体积'},
+                                            {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '站点限制'},
                                             {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '上传量'},
                                             {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '下载量'},
                                             {'component': 'th', 'props': {'class': 'text-start ps-4'}, 'text': '平均分享率'},
