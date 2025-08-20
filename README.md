@@ -9,7 +9,7 @@ MoviePilot官方插件市场：https://github.com/jxxghp/MoviePilot-Plugins
 
 - 支持下载人数     peer:2-20        单位：人 使用方法等同seeder
 
-- 种子删除通知增加单种分享率
+- 种子删除通知增加分享率信息
 
 ## todo
 - [ ] RSS流url
