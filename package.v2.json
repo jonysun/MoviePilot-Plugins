@@ -42,5 +42,17 @@
         "history": {
             "v1.0.1": "增加适配刷流plus插件"
         }
+    },
+    "AutoDiagnosisPlus": {
+        "name": "自动诊断plus",
+        "description": "自动发起系统健康检查、网络连通性测试以及硬链接检查,支持微信菜单命令。",
+        "labels": "系统",
+        "version": "1.0.1",
+        "icon": "https://raw.githubusercontent.com/InfinityPacer/MoviePilot-Plugins/main/icons/autodiagnosis.png",
+        "author": "InfinityPacer,jonysun",
+        "level": 1,
+        "history": {
+            "v1.0.1": "增加微信菜单命令支持"
+        }
     }
 }
