@@ -14,7 +14,7 @@ class MediaCalendar(_PluginBase):
     # 插件图标
     plugin_icon = "statistic.png"
     # 插件版本
-    plugin_version = "1.0.3"
+    plugin_version = "1.0.5"
     # 插件作者
     plugin_author = "jonysun"
     # 作者主页
@@ -29,9 +29,10 @@ class MediaCalendar(_PluginBase):
     _enabled: bool = True
     _refresh: int = 300
     _show_summary: bool = True
-    _color_theme: str = "github_green"
+    _color_theme: str = "mp_purple"
     _show_month_labels: bool = True
-    _dashboard_size: str = "half"
+    _dashboard_size: str = "three_quarter"
+    _cell_scale: int = 100
 
     _MONTH_ABBR: List[str] = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
@@ -52,13 +53,14 @@ class MediaCalendar(_PluginBase):
         self._enabled = self.__to_bool(enabled_value, default=True)
         self._refresh = self.__safe_refresh(config.get("refresh", 300))
         self._show_summary = self.__to_bool(config.get("show_summary", True), default=True)
-        self._color_theme = config.get("color_theme", "github_green")
+        self._color_theme = config.get("color_theme", "mp_purple")
         if self._color_theme not in self._COLOR_THEMES:
-            self._color_theme = "github_green"
+            self._color_theme = "mp_purple"
         self._show_month_labels = self.__to_bool(config.get("show_month_labels", True), default=True)
-        self._dashboard_size = config.get("dashboard_size", "half")
+        self._dashboard_size = config.get("dashboard_size", "three_quarter")
         if self._dashboard_size not in {"half", "three_quarter", "full"}:
-            self._dashboard_size = "half"
+            self._dashboard_size = "three_quarter"
+        self._cell_scale = self.__safe_scale(config.get("cell_scale", 100))
 
     def get_state(self) -> bool:
         return self._enabled
@@ -135,7 +137,7 @@ class MediaCalendar(_PluginBase):
                                 "component": "VCol",
                                 "props": {
                                     "cols": 12,
-                                    "md": 4
+                                    "md": 3
                                 },
                                 "content": [
                                     {
@@ -154,7 +156,7 @@ class MediaCalendar(_PluginBase):
                                 "component": "VCol",
                                 "props": {
                                     "cols": 12,
-                                    "md": 4
+                                    "md": 3
                                 },
                                 "content": [
                                     {
@@ -184,7 +186,7 @@ class MediaCalendar(_PluginBase):
                                 "component": "VCol",
                                 "props": {
                                     "cols": 12,
-                                    "md": 4
+                                    "md": 3
                                 },
                                 "content": [
                                     {
@@ -209,6 +211,26 @@ class MediaCalendar(_PluginBase):
                                         }
                                     }
                                 ]
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {
+                                    "cols": 12,
+                                    "md": 3
+                                },
+                                "content": [
+                                    {
+                                        "component": "VTextField",
+                                        "props": {
+                                            "model": "cell_scale",
+                                            "label": "格子尺寸缩放（80-130%）",
+                                            "type": "number",
+                                            "min": 80,
+                                            "max": 130,
+                                            "placeholder": "100"
+                                        }
+                                    }
+                                ]
                             }
                         ]
                     }
@@ -220,7 +242,8 @@ class MediaCalendar(_PluginBase):
             "show_summary": self._show_summary,
             "color_theme": self._color_theme,
             "show_month_labels": self._show_month_labels,
-            "dashboard_size": self._dashboard_size
+            "dashboard_size": self._dashboard_size,
+            "cell_scale": self._cell_scale
         }
 
     def get_page(self) -> List[dict]:
@@ -253,7 +276,6 @@ class MediaCalendar(_PluginBase):
         attrs = {
             "refresh": self._refresh,
             "title": "媒体入库日历图",
-            "subtitle": "最近365天",
             "border": True
         }
 
@@ -284,6 +306,18 @@ class MediaCalendar(_PluginBase):
             return value if value >= 30 else 30
         except Exception:
             return 300
+
+    @staticmethod
+    def __safe_scale(raw_value: Any) -> int:
+        try:
+            value = int(raw_value)
+            if value < 80:
+                return 80
+            if value > 130:
+                return 130
+            return value
+        except Exception:
+            return 100
 
     @staticmethod
     def __to_bool(value: Any, default: bool = False) -> bool:
@@ -388,10 +422,11 @@ class MediaCalendar(_PluginBase):
         week_count = grid_data["week_count"]
         month_labels = grid_data["month_labels"]
 
-        cell_size = 10
-        cell_gap = 2
-        row_gap = 1
-        weekday_col_width = 18
+        scale_ratio = self._cell_scale / 100
+        cell_size = max(8, int(round(12 * scale_ratio)))
+        cell_gap = max(1, int(round(2 * scale_ratio)))
+        row_gap = max(1, int(round(1 * scale_ratio)))
+        weekday_col_width = max(16, int(round(20 * scale_ratio)))
         calendar_width = week_count * (cell_size + cell_gap)
 
         label_cells = []
@@ -510,51 +545,48 @@ class MediaCalendar(_PluginBase):
         summary_items = []
         if self._show_summary:
             summary_items = [
-                {
-                    "component": "VRow",
-                    "props": {
-                        "class": "mt-1",
-                        "noGutters": True
-                    },
-                    "content": [
-                        {
-                            "component": "VCol",
-                            "props": {"cols": 12, "md": 4},
-                            "content": [
-                                {"component": "div", "props": {"class": "text-caption"}, "text": "总入库量"},
-                                {"component": "div", "props": {"class": "text-h6"}, "text": str(grid_data["total_count"])}
+                                {
+                                    "component": "VRow",
+                                    "props": {
+                                        "class": "mt-1",
+                                        "noGutters": True
+                                    },
+                                    "content": [
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [
+                                                {"component": "div", "props": {"class": "text-caption"}, "text": "总入库量"},
+                                                {"component": "div", "props": {"class": "text-h6"}, "text": str(grid_data["total_count"])}
+                                            ]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [
+                                                {"component": "div", "props": {"class": "text-caption"}, "text": "活跃天数"},
+                                                {"component": "div", "props": {"class": "text-h6"}, "text": str(grid_data["active_days"])}
+                                            ]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [
+                                                {"component": "div", "props": {"class": "text-caption"}, "text": "峰值单日"},
+                                                {"component": "div", "props": {"class": "text-h6"}, "text": str(grid_data["max_count"])}
+                                            ]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [
+                                                {"component": "div", "props": {"class": "text-caption"}, "text": "统计区间"},
+                                                {"component": "div", "props": {"class": "text-body-2"}, "text": grid_data["date_range"]}
+                                            ]
+                                        }
+                                    ]
+                                }
                             ]
-                        },
-                        {
-                            "component": "VCol",
-                            "props": {"cols": 12, "md": 4},
-                            "content": [
-                                {"component": "div", "props": {"class": "text-caption"}, "text": "活跃天数"},
-                                {"component": "div", "props": {"class": "text-h6"}, "text": str(grid_data["active_days"])}
-                            ]
-                        },
-                        {
-                            "component": "VCol",
-                            "props": {"cols": 12, "md": 4},
-                            "content": [
-                                {"component": "div", "props": {"class": "text-caption"}, "text": "峰值单日"},
-                                {"component": "div", "props": {"class": "text-h6"}, "text": str(grid_data["max_count"])}
-                            ]
-                        }
-                    ]
-                },
-                {
-                    "component": "div",
-                    "props": {
-                        "class": "text-caption",
-                        "style": {
-                            "marginTop": "2px",
-                            "color": "rgba(var(--v-theme-on-surface), 0.65)"
-                        }
-                    },
-                    "text": grid_data["date_range"]
-                }
-            ]
 
         if grid_data["total_count"] == 0:
             summary_items.append({
