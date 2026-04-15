@@ -8,13 +8,13 @@ from app.plugins import _PluginBase
 
 class MediaCalendar(_PluginBase):
     # 插件名称
-    plugin_name = "入库日历图"
+    plugin_name = "媒体入库日历图"
     # 插件描述
     plugin_desc = "以贡献日历风格展示最近365天入库数量。"
     # 插件图标
     plugin_icon = "statistic.png"
     # 插件版本
-    plugin_version = "1.0"
+    plugin_version = "1.0.1"
     # 插件作者
     plugin_author = "jonysun"
     # 作者主页
@@ -26,7 +26,7 @@ class MediaCalendar(_PluginBase):
     # 可使用的用户级别
     auth_level = 1
 
-    _enable: bool = True
+    _enabled: bool = True
     _refresh: int = 300
     _show_summary: bool = True
     _color_theme: str = "github_green"
@@ -39,16 +39,19 @@ class MediaCalendar(_PluginBase):
 
     def init_plugin(self, config: dict = None):
         config = config or {}
-        self._enable = bool(config.get("enable", True))
+        enabled_value = config.get("enabled")
+        if enabled_value is None:
+            enabled_value = config.get("enable", True)
+        self._enabled = self.__to_bool(enabled_value, default=True)
         self._refresh = self.__safe_refresh(config.get("refresh", 300))
-        self._show_summary = bool(config.get("show_summary", True))
+        self._show_summary = self.__to_bool(config.get("show_summary", True), default=True)
         self._color_theme = config.get("color_theme", "github_green")
         if self._color_theme not in self._COLOR_THEMES:
             self._color_theme = "github_green"
-        self._show_month_labels = bool(config.get("show_month_labels", True))
+        self._show_month_labels = self.__to_bool(config.get("show_month_labels", True), default=True)
 
     def get_state(self) -> bool:
-        return self._enable
+        return self._enabled
 
     @staticmethod
     def get_command() -> List[Dict[str, Any]]:
@@ -75,7 +78,7 @@ class MediaCalendar(_PluginBase):
                                     {
                                         "component": "VSwitch",
                                         "props": {
-                                            "model": "enable",
+                                            "model": "enabled",
                                             "label": "启用插件"
                                         }
                                     }
@@ -168,7 +171,7 @@ class MediaCalendar(_PluginBase):
                 ]
             }
         ], {
-            "enable": self._enable,
+            "enabled": self._enabled,
             "refresh": self._refresh,
             "show_summary": self._show_summary,
             "color_theme": self._color_theme,
@@ -193,6 +196,9 @@ class MediaCalendar(_PluginBase):
         }]
 
     def get_dashboard(self, key: str = None, **kwargs) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], List[dict]]]:
+        if key and key != "calendar":
+            return None
+
         cols = {
             "cols": 12
         }
@@ -230,6 +236,18 @@ class MediaCalendar(_PluginBase):
             return value if value >= 30 else 30
         except Exception:
             return 300
+
+    @staticmethod
+    def __to_bool(value: Any, default: bool = False) -> bool:
+        if value is None:
+            return default
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value != 0
+        if isinstance(value, str):
+            return value.strip().lower() in {"1", "true", "yes", "on"}
+        return bool(value)
 
     def __build_calendar_grid(self, days: int = 365) -> Dict[str, Any]:
         end_date = date.today()
@@ -472,7 +490,7 @@ class MediaCalendar(_PluginBase):
                 "text": "最近365天暂无入库数据"
             })
 
-        elements = [
+        card_content = [
             {
                 "component": "div",
                 "props": {
@@ -508,6 +526,21 @@ class MediaCalendar(_PluginBase):
                             },
                             legend
                         ]
+                    }
+                ]
+            }
+        ]
+
+        elements = [
+            {
+                "component": "VRow",
+                "content": [
+                    {
+                        "component": "VCol",
+                        "props": {
+                            "cols": 12
+                        },
+                        "content": card_content
                     }
                 ]
             }
