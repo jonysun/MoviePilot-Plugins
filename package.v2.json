@@ -59,13 +59,16 @@
         "name": "媒体入库日历图",
         "description": "在仪表盘增加媒体添加日历功能。",
         "labels": "系统",
-        "version": "1.0.1",
+        "version": "1.0.3",
         "icon": "statistic.png",
         "author": "jonysun",
         "level": 1,
         "history": {
             "v1.0": "测试版",
-            "v1.0.1": "修复仪表板显示"
+            "v1.0.1": "修复仪表板显示",
+            "v1.0.2": "增加周视图",
+            "v1.0.3": "ui优化"
+
         }
     }
 }

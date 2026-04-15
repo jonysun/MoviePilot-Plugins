@@ -14,7 +14,7 @@ class MediaCalendar(_PluginBase):
     # 插件图标
     plugin_icon = "statistic.png"
     # 插件版本
-    plugin_version = "1.0.1"
+    plugin_version = "1.0.3"
     # 插件作者
     plugin_author = "jonysun"
     # 作者主页
@@ -31,10 +31,17 @@ class MediaCalendar(_PluginBase):
     _show_summary: bool = True
     _color_theme: str = "github_green"
     _show_month_labels: bool = True
+    _dashboard_size: str = "half"
+
+    _MONTH_ABBR: List[str] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+    ]
 
     _COLOR_THEMES: Dict[str, List[str]] = {
         "github_green": ["#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39"],
-        "high_contrast_green": ["#e5e7eb", "#86efac", "#22c55e", "#16a34a", "#166534"]
+        "high_contrast_green": ["#e5e7eb", "#86efac", "#22c55e", "#16a34a", "#166534"],
+        "mp_purple": ["#efebfb", "#d4c4f8", "#b79bf3", "#9c73ee", "#9155FD"]
     }
 
     def init_plugin(self, config: dict = None):
@@ -49,6 +56,9 @@ class MediaCalendar(_PluginBase):
         if self._color_theme not in self._COLOR_THEMES:
             self._color_theme = "github_green"
         self._show_month_labels = self.__to_bool(config.get("show_month_labels", True), default=True)
+        self._dashboard_size = config.get("dashboard_size", "half")
+        if self._dashboard_size not in {"half", "three_quarter", "full"}:
+            self._dashboard_size = "half"
 
     def get_state(self) -> bool:
         return self._enabled
@@ -125,7 +135,7 @@ class MediaCalendar(_PluginBase):
                                 "component": "VCol",
                                 "props": {
                                     "cols": 12,
-                                    "md": 6
+                                    "md": 4
                                 },
                                 "content": [
                                     {
@@ -144,7 +154,7 @@ class MediaCalendar(_PluginBase):
                                 "component": "VCol",
                                 "props": {
                                     "cols": 12,
-                                    "md": 6
+                                    "md": 4
                                 },
                                 "content": [
                                     {
@@ -160,6 +170,40 @@ class MediaCalendar(_PluginBase):
                                                 {
                                                     "title": "High Contrast Green",
                                                     "value": "high_contrast_green"
+                                                },
+                                                {
+                                                    "title": "MoviePilot Purple",
+                                                    "value": "mp_purple"
+                                                }
+                                            ]
+                                        }
+                                    }
+                                ]
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {
+                                    "cols": 12,
+                                    "md": 4
+                                },
+                                "content": [
+                                    {
+                                        "component": "VSelect",
+                                        "props": {
+                                            "model": "dashboard_size",
+                                            "label": "组件宽度",
+                                            "items": [
+                                                {
+                                                    "title": "半宽（类似CPU/内存/网络）",
+                                                    "value": "half"
+                                                },
+                                                {
+                                                    "title": "3/4宽（75%）",
+                                                    "value": "three_quarter"
+                                                },
+                                                {
+                                                    "title": "全宽（铺满）",
+                                                    "value": "full"
                                                 }
                                             ]
                                         }
@@ -175,7 +219,8 @@ class MediaCalendar(_PluginBase):
             "refresh": self._refresh,
             "show_summary": self._show_summary,
             "color_theme": self._color_theme,
-            "show_month_labels": self._show_month_labels
+            "show_month_labels": self._show_month_labels,
+            "dashboard_size": self._dashboard_size
         }
 
     def get_page(self) -> List[dict]:
@@ -192,19 +237,22 @@ class MediaCalendar(_PluginBase):
     def get_dashboard_meta(self) -> Optional[List[Dict[str, str]]]:
         return [{
             "key": "calendar",
-            "name": "入库日历图"
+            "name": "媒体入库日历图"
         }]
 
     def get_dashboard(self, key: str = None, **kwargs) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], List[dict]]]:
         if key and key != "calendar":
             return None
 
-        cols = {
-            "cols": 12
-        }
+        if self._dashboard_size == "half":
+            cols = {"cols": 12, "md": 6}
+        elif self._dashboard_size == "three_quarter":
+            cols = {"cols": 12, "md": 9}
+        else:
+            cols = {"cols": 12}
         attrs = {
             "refresh": self._refresh,
-            "title": "入库日历图",
+            "title": "媒体入库日历图",
             "subtitle": "最近365天",
             "border": True
         }
@@ -283,7 +331,7 @@ class MediaCalendar(_PluginBase):
                         "tooltip": f"{day_key}: {day_count}"
                     }
                     if self._show_month_labels and current_day.day == 1 and week_index not in month_labels:
-                        month_labels[week_index] = f"{current_day.month}月"
+                        month_labels[week_index] = self._MONTH_ABBR[current_day.month - 1]
                 else:
                     cell = {
                         "date": None,
@@ -340,6 +388,12 @@ class MediaCalendar(_PluginBase):
         week_count = grid_data["week_count"]
         month_labels = grid_data["month_labels"]
 
+        cell_size = 10
+        cell_gap = 2
+        row_gap = 1
+        weekday_col_width = 18
+        calendar_width = week_count * (cell_size + cell_gap)
+
         label_cells = []
         if self._show_month_labels:
             for week_index in range(week_count):
@@ -347,18 +401,23 @@ class MediaCalendar(_PluginBase):
                     "component": "div",
                     "props": {
                         "style": {
-                            "width": "12px",
-                            "minWidth": "12px",
+                            "width": f"{cell_size}px",
+                            "minWidth": f"{cell_size}px",
                             "height": "14px",
                             "fontSize": "10px",
                             "lineHeight": "14px",
                             "color": "rgba(var(--v-theme-on-surface), 0.65)",
-                            "marginRight": "2px",
-                            "overflow": "visible"
+                            "marginRight": f"{cell_gap}px",
+                            "overflow": "visible",
+                            "whiteSpace": "nowrap"
                         }
                     },
                     "text": month_labels.get(week_index, "")
                 })
+
+        # GitHub 风格周标：仅显示周一/周三/周五
+        weekday_texts = ["一", "", "三", "", "五", "", ""]
+        weekday_label_elements = []
 
         day_row_elements = []
         for weekday in range(7):
@@ -370,24 +429,42 @@ class MediaCalendar(_PluginBase):
                     "props": {
                         "title": cell["tooltip"] if cell["in_range"] else "",
                         "style": {
-                            "width": "12px",
-                            "minWidth": "12px",
-                            "height": "12px",
+                            "width": f"{cell_size}px",
+                            "minWidth": f"{cell_size}px",
+                            "height": f"{cell_size}px",
                             "borderRadius": "2px",
                             "backgroundColor": theme_colors[cell["level"]],
-                            "marginRight": "2px",
+                            "marginRight": f"{cell_gap}px",
                             "opacity": 1 if cell["in_range"] else 0,
                             "cursor": "default"
                         }
                     }
                 })
 
+            weekday_label_elements.append({
+                "component": "div",
+                "props": {
+                    "style": {
+                        "width": f"{weekday_col_width}px",
+                        "minWidth": f"{weekday_col_width}px",
+                        "height": f"{cell_size}px",
+                        "lineHeight": f"{cell_size}px",
+                        "marginBottom": f"{row_gap}px",
+                        "fontSize": "10px",
+                        "textAlign": "right",
+                        "paddingRight": "4px",
+                        "color": "rgba(var(--v-theme-on-surface), 0.65)"
+                    }
+                },
+                "text": weekday_texts[weekday]
+            })
+
             day_row_elements.append({
                 "component": "div",
                 "props": {
                     "class": "d-flex align-center",
                     "style": {
-                        "marginBottom": "2px"
+                        "marginBottom": f"{row_gap}px"
                     }
                 },
                 "content": row_cells
@@ -398,7 +475,7 @@ class MediaCalendar(_PluginBase):
             "props": {
                 "class": "d-flex align-center justify-end",
                 "style": {
-                    "marginTop": "8px",
+                    "marginTop": "4px",
                     "gap": "4px",
                     "fontSize": "11px",
                     "color": "rgba(var(--v-theme-on-surface), 0.65)"
@@ -414,8 +491,8 @@ class MediaCalendar(_PluginBase):
                         "component": "div",
                         "props": {
                             "style": {
-                                "width": "12px",
-                                "height": "12px",
+                                "width": f"{cell_size}px",
+                                "height": f"{cell_size}px",
                                 "borderRadius": "2px",
                                 "backgroundColor": theme_colors[level]
                             }
@@ -436,7 +513,8 @@ class MediaCalendar(_PluginBase):
                 {
                     "component": "VRow",
                     "props": {
-                        "class": "mt-2"
+                        "class": "mt-1",
+                        "noGutters": True
                     },
                     "content": [
                         {
@@ -470,7 +548,7 @@ class MediaCalendar(_PluginBase):
                     "props": {
                         "class": "text-caption",
                         "style": {
-                            "marginTop": "4px",
+                            "marginTop": "2px",
                             "color": "rgba(var(--v-theme-on-surface), 0.65)"
                         }
                     },
@@ -485,7 +563,7 @@ class MediaCalendar(_PluginBase):
                     "type": "info",
                     "variant": "tonal",
                     "density": "compact",
-                    "class": "mt-2"
+                    "class": "mt-1"
                 },
                 "text": "最近365天暂无入库数据"
             })
@@ -503,7 +581,7 @@ class MediaCalendar(_PluginBase):
                         "component": "div",
                         "props": {
                             "style": {
-                                "minWidth": "740px"
+                                "minWidth": f"{calendar_width + weekday_col_width + 8}px"
                             }
                         },
                         "content": [
@@ -512,17 +590,45 @@ class MediaCalendar(_PluginBase):
                                 "props": {
                                     "class": "d-flex align-center",
                                     "style": {
-                                        "marginBottom": "6px",
-                                        "paddingLeft": "2px"
+                                        "marginBottom": "2px"
                                     }
                                 },
-                                "content": label_cells
+                                "content": [
+                                    {
+                                        "component": "div",
+                                        "props": {
+                                            "style": {
+                                                "width": f"{weekday_col_width}px",
+                                                "minWidth": f"{weekday_col_width}px"
+                                            }
+                                        }
+                                    },
+                                    {
+                                        "component": "div",
+                                        "props": {
+                                            "class": "d-flex align-center"
+                                        },
+                                        "content": label_cells
+                                    }
+                                ]
                             } if self._show_month_labels else {
                                 "component": "div"
                             },
                             {
                                 "component": "div",
-                                "content": day_row_elements
+                                "props": {
+                                    "class": "d-flex"
+                                },
+                                "content": [
+                                    {
+                                        "component": "div",
+                                        "content": weekday_label_elements
+                                    },
+                                    {
+                                        "component": "div",
+                                        "content": day_row_elements
+                                    }
+                                ]
                             },
                             legend
                         ]
