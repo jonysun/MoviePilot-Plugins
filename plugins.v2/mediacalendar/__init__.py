@@ -270,7 +270,7 @@ class MediaCalendar(_PluginBase):
         if self._dashboard_size == "half":
             cols = {"cols": 12, "md": 6}
         elif self._dashboard_size == "three_quarter":
-            cols = {"cols": 12, "md": 9}
+            cols = {"cols": 12, "md": 8}
         else:
             cols = {"cols": 12}
         attrs = {
