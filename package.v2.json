@@ -54,5 +54,17 @@
         "history": {
             "v1.0.1": "增加微信菜单命令支持"
         }
+    },
+    "MediaCalendar": {
+        "name": "媒体日历图",
+        "description": "在仪表盘增加媒体添加日历功能。",
+        "labels": "系统",
+        "version": "1.0",
+        "icon": "statistic.png",
+        "author": "jonysun",
+        "level": 1,
+        "history": {
+            "v1.0": "测试版"
+        }
     }
 }
