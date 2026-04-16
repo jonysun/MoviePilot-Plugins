@@ -4,45 +4,58 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.plugins import _PluginBase
+from app.utils.system import SystemUtils
 
 
 class MediaCalendar(_PluginBase):
-    # 插件名称
     plugin_name = "媒体入库日历图"
-    # 插件描述
-    plugin_desc = "以贡献日历风格展示最近365天入库数量。"
-    # 插件图标
+    plugin_desc = "以贡献日历风格展示入库活跃度与性能走势。"
     plugin_icon = "statistic.png"
-    # 插件版本
-    plugin_version = "1.0.5"
-    # 插件作者
+    plugin_version = "1.2.0"
     plugin_author = "jonysun"
-    # 作者主页
     author_url = "https://github.com/jonysun"
-    # 插件配置项ID前缀
     plugin_config_prefix = "mediacalendar_"
-    # 加载顺序
     plugin_order = 99
-    # 可使用的用户级别
     auth_level = 1
 
     _enabled: bool = True
     _refresh: int = 300
+
+    # calendar settings
     _show_summary: bool = True
     _color_theme: str = "mp_purple"
     _show_month_labels: bool = True
-    _dashboard_size: str = "three_quarter"
+    _calendar_size: str = "two_third"
     _cell_scale: int = 100
+    _range: str = "1y"
+
+    # performance settings
+    _performance_size: str = "half"
+    _performance_height: int = 190
 
     _MONTH_ABBR: List[str] = [
         "Jan", "Feb", "Mar", "Apr", "May", "Jun",
         "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
     ]
 
+    _RANGE_DAYS: Dict[str, int] = {
+        "1m": 30,
+        "3m": 90,
+        "6m": 180,
+        "1y": 365,
+    }
+
+    _SIZE_COLS: Dict[str, Dict[str, int]] = {
+        "one_third": {"cols": 12, "md": 4},
+        "half": {"cols": 12, "md": 6},
+        "two_third": {"cols": 12, "md": 8},
+        "full": {"cols": 12},
+    }
+
     _COLOR_THEMES: Dict[str, List[str]] = {
         "github_green": ["#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39"],
         "high_contrast_green": ["#e5e7eb", "#86efac", "#22c55e", "#16a34a", "#166534"],
-        "mp_purple": ["#efebfb", "#d4c4f8", "#b79bf3", "#9c73ee", "#9155FD"]
+        "mp_purple": ["#efebfb", "#d4c4f8", "#b79bf3", "#9c73ee", "#9155FD"],
     }
 
     def init_plugin(self, config: dict = None):
@@ -52,15 +65,31 @@ class MediaCalendar(_PluginBase):
             enabled_value = config.get("enable", True)
         self._enabled = self.__to_bool(enabled_value, default=True)
         self._refresh = self.__safe_refresh(config.get("refresh", 300))
+
         self._show_summary = self.__to_bool(config.get("show_summary", True), default=True)
+
         self._color_theme = config.get("color_theme", "mp_purple")
         if self._color_theme not in self._COLOR_THEMES:
             self._color_theme = "mp_purple"
+
         self._show_month_labels = self.__to_bool(config.get("show_month_labels", True), default=True)
-        self._dashboard_size = config.get("dashboard_size", "three_quarter")
-        if self._dashboard_size not in {"half", "three_quarter", "full"}:
-            self._dashboard_size = "three_quarter"
+
+        dashboard_size = config.get("dashboard_size", "two_third")
+        self._calendar_size = config.get("calendar_size", dashboard_size)
+        if self._calendar_size not in self._SIZE_COLS:
+            self._calendar_size = "two_third"
+
+        self._performance_size = config.get("performance_size", "half")
+        if self._performance_size not in self._SIZE_COLS:
+            self._performance_size = "half"
+
         self._cell_scale = self.__safe_scale(config.get("cell_scale", 100))
+
+        self._range = config.get("range", "1y")
+        if self._range not in self._RANGE_DAYS:
+            self._range = "1y"
+
+        self._performance_height = self.__safe_perf_height(config.get("performance_height", 190))
 
     def get_state(self) -> bool:
         return self._enabled
@@ -82,63 +111,27 @@ class MediaCalendar(_PluginBase):
                         "content": [
                             {
                                 "component": "VCol",
-                                "props": {
-                                    "cols": 12,
-                                    "md": 4
-                                },
+                                "props": {"cols": 12, "md": 4},
                                 "content": [
                                     {
                                         "component": "VSwitch",
-                                        "props": {
-                                            "model": "enabled",
-                                            "label": "启用插件"
-                                        }
+                                        "props": {"model": "enabled", "label": "启用插件"},
                                     }
-                                ]
+                                ],
                             },
                             {
                                 "component": "VCol",
-                                "props": {
-                                    "cols": 12,
-                                    "md": 4
-                                },
+                                "props": {"cols": 12, "md": 4},
                                 "content": [
                                     {
                                         "component": "VSwitch",
-                                        "props": {
-                                            "model": "show_summary",
-                                            "label": "显示摘要信息"
-                                        }
+                                        "props": {"model": "show_summary", "label": "显示摘要信息"},
                                     }
-                                ]
+                                ],
                             },
                             {
                                 "component": "VCol",
-                                "props": {
-                                    "cols": 12,
-                                    "md": 4
-                                },
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {
-                                            "model": "show_month_labels",
-                                            "label": "显示月份标签"
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    },
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {
-                                    "cols": 12,
-                                    "md": 3
-                                },
+                                "props": {"cols": 12, "md": 4},
                                 "content": [
                                     {
                                         "component": "VTextField",
@@ -147,94 +140,191 @@ class MediaCalendar(_PluginBase):
                                             "label": "自动刷新间隔（秒）",
                                             "type": "number",
                                             "min": 30,
-                                            "placeholder": "300"
-                                        }
+                                            "placeholder": "300",
+                                        },
                                     }
-                                ]
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "component": "VTabs",
+                        "props": {
+                            "model": "_settings_tab",
+                            "style": {
+                                "margin-top": "8px",
+                                "margin-bottom": "12px",
+                            },
+                        },
+                        "content": [
+                            {
+                                "component": "VTab",
+                                "props": {"value": "calendar_tab"},
+                                "text": "日历图设置",
                             },
                             {
-                                "component": "VCol",
-                                "props": {
-                                    "cols": 12,
-                                    "md": 3
-                                },
+                                "component": "VTab",
+                                "props": {"value": "performance_tab"},
+                                "text": "CPU/内存设置",
+                            },
+                        ],
+                    },
+                    {
+                        "component": "VWindow",
+                        "props": {"model": "_settings_tab"},
+                        "content": [
+                            {
+                                "component": "VWindowItem",
+                                "props": {"value": "calendar_tab"},
                                 "content": [
                                     {
-                                        "component": "VSelect",
-                                        "props": {
-                                            "model": "color_theme",
-                                            "label": "颜色主题",
-                                            "items": [
-                                                {
-                                                    "title": "GitHub Green",
-                                                    "value": "github_green"
-                                                },
-                                                {
-                                                    "title": "High Contrast Green",
-                                                    "value": "high_contrast_green"
-                                                },
-                                                {
-                                                    "title": "MoviePilot Purple",
-                                                    "value": "mp_purple"
-                                                }
-                                            ]
-                                        }
-                                    }
-                                ]
+                                        "component": "VRow",
+                                        "content": [
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 3},
+                                                "content": [
+                                                    {
+                                                        "component": "VSelect",
+                                                        "props": {
+                                                            "model": "range",
+                                                            "label": "统计区间",
+                                                            "items": [
+                                                                {"title": "1个月", "value": "1m"},
+                                                                {"title": "3个月", "value": "3m"},
+                                                                {"title": "6个月", "value": "6m"},
+                                                                {"title": "1年", "value": "1y"},
+                                                            ],
+                                                        },
+                                                    }
+                                                ],
+                                            },
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 3},
+                                                "content": [
+                                                    {
+                                                        "component": "VSelect",
+                                                        "props": {
+                                                            "model": "color_theme",
+                                                            "label": "颜色主题",
+                                                            "items": [
+                                                                {"title": "GitHub Green", "value": "github_green"},
+                                                                {"title": "High Contrast Green", "value": "high_contrast_green"},
+                                                                {"title": "MoviePilot Purple", "value": "mp_purple"},
+                                                            ],
+                                                        },
+                                                    }
+                                                ],
+                                            },
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 3},
+                                                "content": [
+                                                    {
+                                                        "component": "VSelect",
+                                                        "props": {
+                                                            "model": "calendar_size",
+                                                            "label": "日历组件宽度",
+                                                            "items": [
+                                                                {"title": "1/3（33%）", "value": "one_third"},
+                                                                {"title": "1/2（50%）", "value": "half"},
+                                                                {"title": "2/3（66%）", "value": "two_third"},
+                                                                {"title": "全宽（100%）", "value": "full"},
+                                                            ],
+                                                        },
+                                                    }
+                                                ],
+                                            },
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 3},
+                                                "content": [
+                                                    {
+                                                        "component": "VTextField",
+                                                        "props": {
+                                                            "model": "cell_scale",
+                                                            "label": "格子尺寸缩放（80-130%）",
+                                                            "type": "number",
+                                                            "min": 80,
+                                                            "max": 130,
+                                                            "placeholder": "100",
+                                                        },
+                                                    }
+                                                ],
+                                            },
+                                        ],
+                                    },
+                                    {
+                                        "component": "VRow",
+                                        "content": [
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 4},
+                                                "content": [
+                                                    {
+                                                        "component": "VSwitch",
+                                                        "props": {
+                                                            "model": "show_month_labels",
+                                                            "label": "显示月份标签",
+                                                        },
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    },
+                                ],
                             },
                             {
-                                "component": "VCol",
-                                "props": {
-                                    "cols": 12,
-                                    "md": 3
-                                },
+                                "component": "VWindowItem",
+                                "props": {"value": "performance_tab"},
                                 "content": [
                                     {
-                                        "component": "VSelect",
-                                        "props": {
-                                            "model": "dashboard_size",
-                                            "label": "组件宽度",
-                                            "items": [
-                                                {
-                                                    "title": "半宽（类似CPU/内存/网络）",
-                                                    "value": "half"
-                                                },
-                                                {
-                                                    "title": "3/4宽（75%）",
-                                                    "value": "three_quarter"
-                                                },
-                                                {
-                                                    "title": "全宽（铺满）",
-                                                    "value": "full"
-                                                }
-                                            ]
-                                        }
+                                        "component": "VRow",
+                                        "content": [
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 4},
+                                                "content": [
+                                                    {
+                                                        "component": "VSelect",
+                                                        "props": {
+                                                            "model": "performance_size",
+                                                            "label": "性能组件宽度",
+                                                            "items": [
+                                                                {"title": "1/3（33%）", "value": "one_third"},
+                                                                {"title": "1/2（50%）", "value": "half"},
+                                                                {"title": "2/3（66%）", "value": "two_third"},
+                                                                {"title": "全宽（100%）", "value": "full"},
+                                                            ],
+                                                        },
+                                                    }
+                                                ],
+                                            },
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 4},
+                                                "content": [
+                                                    {
+                                                        "component": "VTextField",
+                                                        "props": {
+                                                            "model": "performance_height",
+                                                            "label": "性能图高度（120-320）",
+                                                            "type": "number",
+                                                            "min": 120,
+                                                            "max": 320,
+                                                            "placeholder": "190",
+                                                        },
+                                                    }
+                                                ],
+                                            },
+                                        ],
                                     }
-                                ]
+                                ],
                             },
-                            {
-                                "component": "VCol",
-                                "props": {
-                                    "cols": 12,
-                                    "md": 3
-                                },
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "cell_scale",
-                                            "label": "格子尺寸缩放（80-130%）",
-                                            "type": "number",
-                                            "min": 80,
-                                            "max": 130,
-                                            "placeholder": "100"
-                                        }
-                                    }
-                                ]
-                            }
-                        ]
-                    }
-                ]
+                        ],
+                    },
+                ],
             }
         ], {
             "enabled": self._enabled,
@@ -242,57 +332,55 @@ class MediaCalendar(_PluginBase):
             "show_summary": self._show_summary,
             "color_theme": self._color_theme,
             "show_month_labels": self._show_month_labels,
-            "dashboard_size": self._dashboard_size,
-            "cell_scale": self._cell_scale
+            "dashboard_size": self._calendar_size,
+            "calendar_size": self._calendar_size,
+            "performance_size": self._performance_size,
+            "cell_scale": self._cell_scale,
+            "range": self._range,
+            "performance_height": self._performance_height,
+            "_settings_tab": "calendar_tab",
         }
 
     def get_page(self) -> List[dict]:
         return [
             {
                 "component": "div",
-                "props": {
-                    "class": "text-center"
-                },
-                "text": "请在仪表板中添加“入库日历图”组件查看数据。"
+                "props": {"class": "text-center"},
+                "text": "请在仪表板中添加“媒体入库日历图”或“媒体入库性能”组件查看数据。",
             }
         ]
 
     def get_dashboard_meta(self) -> Optional[List[Dict[str, str]]]:
-        return [{
-            "key": "calendar",
-            "name": "媒体入库日历图"
-        }]
+        return [
+            {"key": "calendar", "name": "媒体入库日历图"},
+            {"key": "performance", "name": "媒体入库性能"},
+        ]
 
     def get_dashboard(self, key: str = None, **kwargs) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], List[dict]]]:
-        if key and key != "calendar":
+        if key and key not in {"calendar", "performance"}:
             return None
 
-        if self._dashboard_size == "half":
-            cols = {"cols": 12, "md": 6}
-        elif self._dashboard_size == "three_quarter":
-            cols = {"cols": 12, "md": 9}
-        else:
-            cols = {"cols": 12}
-        attrs = {
-            "refresh": self._refresh,
-            "title": "媒体入库日历图",
-            "border": True
-        }
+        key = key or "calendar"
 
         try:
-            grid_data = self.__build_calendar_grid(days=365)
-            elements = self.__build_dashboard_elements(grid_data)
+            if key == "performance":
+                cols = self._SIZE_COLS.get(self._performance_size, self._SIZE_COLS["half"])
+                attrs = {"refresh": self._refresh, "title": "媒体入库性能", "border": True}
+                perf_data = self.__load_performance_data()
+                elements = self.__build_performance_elements(perf_data=perf_data)
+            else:
+                cols = self._SIZE_COLS.get(self._calendar_size, self._SIZE_COLS["two_third"])
+                attrs = {"refresh": self._refresh, "title": "媒体入库日历图", "border": True}
+                days = self._RANGE_DAYS.get(self._range, 365)
+                grid_data = self.__build_calendar_grid(days=days)
+                elements = self.__build_calendar_elements(grid_data=grid_data)
             return cols, attrs, elements
         except Exception as err:
             return cols, attrs, [
                 {
                     "component": "VAlert",
-                    "props": {
-                        "type": "warning",
-                        "variant": "tonal",
-                        "density": "compact"
-                    },
-                    "text": f"入库日历图数据加载失败：{str(err)}"
+                    "props": {"type": "warning", "variant": "tonal", "density": "compact"},
+                    "text": f"媒体入库组件数据加载失败：{str(err)}",
                 }
             ]
 
@@ -320,6 +408,18 @@ class MediaCalendar(_PluginBase):
             return 100
 
     @staticmethod
+    def __safe_perf_height(raw_value: Any) -> int:
+        try:
+            value = int(raw_value)
+            if value < 120:
+                return 120
+            if value > 320:
+                return 320
+            return value
+        except Exception:
+            return 190
+
+    @staticmethod
     def __to_bool(value: Any, default: bool = False) -> bool:
         if value is None:
             return default
@@ -331,7 +431,7 @@ class MediaCalendar(_PluginBase):
             return value.strip().lower() in {"1", "true", "yes", "on"}
         return bool(value)
 
-    def __build_calendar_grid(self, days: int = 365) -> Dict[str, Any]:
+    def __build_calendar_grid(self, days: int) -> Dict[str, Any]:
         end_date = date.today()
         start_date = end_date - timedelta(days=days - 1)
         count_by_day = self.__load_daily_counts(days=days)
@@ -362,7 +462,7 @@ class MediaCalendar(_PluginBase):
                         "count": day_count,
                         "level": level,
                         "in_range": True,
-                        "tooltip": f"{day_key}: {day_count}"
+                        "tooltip": f"{day_key}: {day_count}",
                     }
                     if self._show_month_labels and current_day.day == 1 and week_index not in month_labels:
                         month_labels[week_index] = self._MONTH_ABBR[current_day.month - 1]
@@ -372,7 +472,7 @@ class MediaCalendar(_PluginBase):
                         "count": 0,
                         "level": 0,
                         "in_range": False,
-                        "tooltip": ""
+                        "tooltip": "",
                     }
 
                 week_cells.append(cell)
@@ -389,7 +489,7 @@ class MediaCalendar(_PluginBase):
             "max_count": max_count,
             "total_count": total_count,
             "active_days": active_days,
-            "date_range": f"{start_date.isoformat()} ~ {end_date.isoformat()}"
+            "date_range": f"{start_date.isoformat()} ~ {end_date.isoformat()}",
         }
 
     @staticmethod
@@ -399,13 +499,10 @@ class MediaCalendar(_PluginBase):
         return max(1, min(4, math.ceil((count / max_count) * 4)))
 
     @staticmethod
-    def __load_daily_counts(days: int = 365) -> Dict[str, int]:
+    def __load_daily_counts(days: int) -> Dict[str, int]:
         today = date.today()
         first_day = today - timedelta(days=days - 1)
-        result = {
-            (first_day + timedelta(days=delta)).isoformat(): 0
-            for delta in range(days)
-        }
+        result = {(first_day + timedelta(days=delta)).isoformat(): 0 for delta in range(days)}
 
         rows = TransferHistoryOper().statistic(days=days)
         for item in rows:
@@ -416,17 +513,27 @@ class MediaCalendar(_PluginBase):
                 result[day_key] = int(item[1])
         return result
 
-    def __build_dashboard_elements(self, grid_data: Dict[str, Any]) -> List[dict]:
-        theme_colors = self._COLOR_THEMES.get(self._color_theme, self._COLOR_THEMES["github_green"])
+    @staticmethod
+    def __load_performance_data() -> Dict[str, Any]:
+        cpu = SystemUtils.cpu_usage()
+        memory = SystemUtils.memory_usage()
+        memory_usage = int(memory[1]) if memory and len(memory) > 1 else 0
+        return {
+            "cpu": round(float(cpu), 1),
+            "memory": memory_usage,
+        }
+
+    def __build_calendar_elements(self, grid_data: Dict[str, Any]) -> List[dict]:
+        theme_colors = self._COLOR_THEMES.get(self._color_theme, self._COLOR_THEMES["mp_purple"])
         weeks = grid_data["weeks"]
         week_count = grid_data["week_count"]
         month_labels = grid_data["month_labels"]
 
         scale_ratio = self._cell_scale / 100
-        cell_size = max(8, int(round(12 * scale_ratio)))
-        cell_gap = max(1, int(round(2 * scale_ratio)))
+        cell_size = max(10, int(round(13 * scale_ratio)))
+        cell_gap = max(2, int(round(2 * scale_ratio)))
         row_gap = max(1, int(round(1 * scale_ratio)))
-        weekday_col_width = max(16, int(round(20 * scale_ratio)))
+        weekday_col_width = max(18, int(round(20 * scale_ratio)))
         calendar_width = week_count * (cell_size + cell_gap)
 
         label_cells = []
@@ -444,16 +551,14 @@ class MediaCalendar(_PluginBase):
                             "color": "rgba(var(--v-theme-on-surface), 0.65)",
                             "marginRight": f"{cell_gap}px",
                             "overflow": "visible",
-                            "whiteSpace": "nowrap"
+                            "whiteSpace": "nowrap",
                         }
                     },
-                    "text": month_labels.get(week_index, "")
+                    "text": month_labels.get(week_index, ""),
                 })
 
-        # GitHub 风格周标：仅显示周一/周三/周五
         weekday_texts = ["一", "", "三", "", "五", "", ""]
         weekday_label_elements = []
-
         day_row_elements = []
         for weekday in range(7):
             row_cells = []
@@ -471,9 +576,9 @@ class MediaCalendar(_PluginBase):
                             "backgroundColor": theme_colors[cell["level"]],
                             "marginRight": f"{cell_gap}px",
                             "opacity": 1 if cell["in_range"] else 0,
-                            "cursor": "default"
-                        }
-                    }
+                            "cursor": "default",
+                        },
+                    },
                 })
 
             weekday_label_elements.append({
@@ -488,21 +593,19 @@ class MediaCalendar(_PluginBase):
                         "fontSize": "10px",
                         "textAlign": "right",
                         "paddingRight": "4px",
-                        "color": "rgba(var(--v-theme-on-surface), 0.65)"
+                        "color": "rgba(var(--v-theme-on-surface), 0.65)",
                     }
                 },
-                "text": weekday_texts[weekday]
+                "text": weekday_texts[weekday],
             })
 
             day_row_elements.append({
                 "component": "div",
                 "props": {
                     "class": "d-flex align-center",
-                    "style": {
-                        "marginBottom": f"{row_gap}px"
-                    }
+                    "style": {"marginBottom": f"{row_gap}px"},
                 },
-                "content": row_cells
+                "content": row_cells,
             })
 
         legend = {
@@ -510,17 +613,14 @@ class MediaCalendar(_PluginBase):
             "props": {
                 "class": "d-flex align-center justify-end",
                 "style": {
-                    "marginTop": "4px",
+                    "marginTop": "2px",
                     "gap": "4px",
                     "fontSize": "11px",
-                    "color": "rgba(var(--v-theme-on-surface), 0.65)"
-                }
+                    "color": "rgba(var(--v-theme-on-surface), 0.65)",
+                },
             },
             "content": [
-                {
-                    "component": "span",
-                    "text": "少"
-                },
+                {"component": "span", "text": "少"},
                 *[
                     {
                         "component": "div",
@@ -529,160 +629,192 @@ class MediaCalendar(_PluginBase):
                                 "width": f"{cell_size}px",
                                 "height": f"{cell_size}px",
                                 "borderRadius": "2px",
-                                "backgroundColor": theme_colors[level]
+                                "backgroundColor": theme_colors[level],
                             }
-                        }
+                        },
                     }
                     for level in range(5)
                 ],
-                {
-                    "component": "span",
-                    "text": "多"
-                }
-            ]
+                {"component": "span", "text": "多"},
+            ],
         }
 
-        summary_items = []
-        if self._show_summary:
-            summary_items = [
+        stats_row = {
+            "component": "VRow",
+            "props": {
+                "class": "mt-0",
+                "noGutters": True,
+                "style": {"marginTop": "2px", "marginBottom": "0"},
+            },
+            "content": [
+                {
+                    "component": "VCol",
+                    "props": {"cols": 12, "md": 3},
+                    "content": [
+                        {"component": "div", "props": {"class": "text-caption"}, "text": "总入库量"},
+                        {"component": "div", "props": {"class": "text-h6"}, "text": str(grid_data["total_count"])},
+                    ],
+                },
+                {
+                    "component": "VCol",
+                    "props": {"cols": 12, "md": 3},
+                    "content": [
+                        {"component": "div", "props": {"class": "text-caption"}, "text": "活跃天数"},
+                        {"component": "div", "props": {"class": "text-h6"}, "text": str(grid_data["active_days"])},
+                    ],
+                },
+                {
+                    "component": "VCol",
+                    "props": {"cols": 12, "md": 3},
+                    "content": [
+                        {"component": "div", "props": {"class": "text-caption"}, "text": "峰值单日"},
+                        {"component": "div", "props": {"class": "text-h6"}, "text": str(grid_data["max_count"])},
+                    ],
+                },
+                {
+                    "component": "VCol",
+                    "props": {"cols": 12, "md": 3},
+                    "content": [
+                        {"component": "div", "props": {"class": "text-caption"}, "text": "统计区间"},
+                        {"component": "div", "props": {"class": "text-body-2"}, "text": grid_data["date_range"]},
+                    ],
+                },
+            ],
+        }
+
+        main_calendar = {
+            "component": "div",
+            "props": {"style": {"overflowX": "auto"}},
+            "content": [
+                {
+                    "component": "div",
+                    "props": {"style": {"minWidth": f"{calendar_width + weekday_col_width + 8}px"}},
+                    "content": [
+                        {
+                            "component": "div",
+                            "props": {
+                                "class": "d-flex align-center",
+                                "style": {"marginBottom": "1px"},
+                            },
+                            "content": [
                                 {
-                                    "component": "VRow",
-                                    "props": {
-                                        "class": "mt-1",
-                                        "noGutters": True
-                                    },
-                                    "content": [
-                                        {
-                                            "component": "VCol",
-                                            "props": {"cols": 12, "md": 3},
-                                            "content": [
-                                                {"component": "div", "props": {"class": "text-caption"}, "text": "总入库量"},
-                                                {"component": "div", "props": {"class": "text-h6"}, "text": str(grid_data["total_count"])}
-                                            ]
-                                        },
-                                        {
-                                            "component": "VCol",
-                                            "props": {"cols": 12, "md": 3},
-                                            "content": [
-                                                {"component": "div", "props": {"class": "text-caption"}, "text": "活跃天数"},
-                                                {"component": "div", "props": {"class": "text-h6"}, "text": str(grid_data["active_days"])}
-                                            ]
-                                        },
-                                        {
-                                            "component": "VCol",
-                                            "props": {"cols": 12, "md": 3},
-                                            "content": [
-                                                {"component": "div", "props": {"class": "text-caption"}, "text": "峰值单日"},
-                                                {"component": "div", "props": {"class": "text-h6"}, "text": str(grid_data["max_count"])}
-                                            ]
-                                        },
-                                        {
-                                            "component": "VCol",
-                                            "props": {"cols": 12, "md": 3},
-                                            "content": [
-                                                {"component": "div", "props": {"class": "text-caption"}, "text": "统计区间"},
-                                                {"component": "div", "props": {"class": "text-body-2"}, "text": grid_data["date_range"]}
-                                            ]
-                                        }
-                                    ]
-                                }
-                            ]
+                                    "component": "div",
+                                    "props": {"style": {"width": f"{weekday_col_width}px", "minWidth": f"{weekday_col_width}px"}},
+                                },
+                                {
+                                    "component": "div",
+                                    "props": {"class": "d-flex align-center"},
+                                    "content": label_cells,
+                                },
+                            ],
+                        } if self._show_month_labels else {"component": "div"},
+                        {
+                            "component": "div",
+                            "props": {"class": "d-flex"},
+                            "content": [
+                                {"component": "div", "content": weekday_label_elements},
+                                {"component": "div", "content": day_row_elements},
+                            ],
+                        },
+                        legend,
+                    ],
+                }
+            ],
+        }
+
+        elements: List[dict] = [main_calendar]
+        if self._show_summary:
+            elements.append(stats_row)
 
         if grid_data["total_count"] == 0:
-            summary_items.append({
+            elements.append({
                 "component": "VAlert",
                 "props": {
                     "type": "info",
                     "variant": "tonal",
                     "density": "compact",
-                    "class": "mt-1"
+                    "class": "mt-1",
                 },
-                "text": "最近365天暂无入库数据"
+                "text": "当前统计区间暂无入库数据",
             })
 
-        card_content = [
-            {
-                "component": "div",
-                "props": {
-                    "style": {
-                        "overflowX": "auto"
-                    }
-                },
-                "content": [
-                    {
-                        "component": "div",
-                        "props": {
-                            "style": {
-                                "minWidth": f"{calendar_width + weekday_col_width + 8}px"
-                            }
-                        },
-                        "content": [
-                            {
-                                "component": "div",
-                                "props": {
-                                    "class": "d-flex align-center",
-                                    "style": {
-                                        "marginBottom": "2px"
-                                    }
-                                },
-                                "content": [
-                                    {
-                                        "component": "div",
-                                        "props": {
-                                            "style": {
-                                                "width": f"{weekday_col_width}px",
-                                                "minWidth": f"{weekday_col_width}px"
-                                            }
-                                        }
-                                    },
-                                    {
-                                        "component": "div",
-                                        "props": {
-                                            "class": "d-flex align-center"
-                                        },
-                                        "content": label_cells
-                                    }
-                                ]
-                            } if self._show_month_labels else {
-                                "component": "div"
-                            },
-                            {
-                                "component": "div",
-                                "props": {
-                                    "class": "d-flex"
-                                },
-                                "content": [
-                                    {
-                                        "component": "div",
-                                        "content": weekday_label_elements
-                                    },
-                                    {
-                                        "component": "div",
-                                        "content": day_row_elements
-                                    }
-                                ]
-                            },
-                            legend
-                        ]
-                    }
-                ]
-            }
-        ]
-
-        elements = [
+        return [
             {
                 "component": "VRow",
                 "content": [
                     {
                         "component": "VCol",
-                        "props": {
-                            "cols": 12
-                        },
-                        "content": card_content
+                        "props": {"cols": 12},
+                        "content": elements,
                     }
-                ]
+                ],
             }
         ]
 
-        elements.extend(summary_items)
-        return elements
+    def __build_performance_elements(self, perf_data: Dict[str, Any]) -> List[dict]:
+        perf_chart = {
+            "component": "VApexChart",
+            "props": {
+                "height": self._performance_height,
+                "options": {
+                    "chart": {
+                        "type": "line",
+                        "toolbar": {"show": False},
+                        "sparkline": {"enabled": False},
+                    },
+                    "stroke": {
+                        "curve": "smooth",
+                        "width": [3, 3],
+                    },
+                    "xaxis": {"categories": ["当前"]},
+                    "yaxis": [
+                        {"min": 0, "max": 100, "title": {"text": "CPU %"}},
+                        {"opposite": True, "min": 0, "max": 100, "title": {"text": "内存 %"}},
+                    ],
+                    "colors": ["#9155FD", "#16B1FF"],
+                    "legend": {"position": "top"},
+                    "dataLabels": {"enabled": True},
+                    "tooltip": {"shared": True, "intersect": False},
+                },
+                "series": [
+                    {"name": "CPU", "data": [perf_data["cpu"]]},
+                    {"name": "内存", "data": [perf_data["memory"]]},
+                ],
+            },
+        }
+
+        summary = {
+            "component": "VRow",
+            "props": {"class": "mt-1", "noGutters": True},
+            "content": [
+                {
+                    "component": "VCol",
+                    "props": {"cols": 6},
+                    "content": [
+                        {"component": "div", "props": {"class": "text-caption"}, "text": "CPU"},
+                        {"component": "div", "props": {"class": "text-h6"}, "text": f"{perf_data['cpu']}%"},
+                    ],
+                },
+                {
+                    "component": "VCol",
+                    "props": {"cols": 6},
+                    "content": [
+                        {"component": "div", "props": {"class": "text-caption"}, "text": "内存"},
+                        {"component": "div", "props": {"class": "text-h6"}, "text": f"{perf_data['memory']}%"},
+                    ],
+                },
+            ],
+        }
+
+        return [
+            {
+                "component": "VRow",
+                "content": [
+                    {
+                        "component": "VCol",
+                        "props": {"cols": 12},
+                        "content": [perf_chart, summary],
+                    }
+                ],
+            }
+        ]
