@@ -11,7 +11,7 @@ class MediaCalendar(_PluginBase):
     plugin_name = "媒体入库日历图"
     plugin_desc = "以贡献日历风格展示入库活跃度与主机性能。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.3.1"
+    plugin_version = "1.3.3"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "mediacalendar_"
@@ -27,8 +27,9 @@ class MediaCalendar(_PluginBase):
     _color_theme: str = "mp_purple"
     _show_month_labels: bool = True
     _calendar_size: str = "two_third"
-    _cell_scale: int = 100
-    _cell_radius: float = 3.0
+    _cell_scale: int = 110
+    _cell_gap: int = 2
+    _cell_radius: float = 4.0
     _range: str = "1y"
     _label_style: str = "english_abbr"
     _calendar_refresh: int = 300
@@ -85,8 +86,9 @@ class MediaCalendar(_PluginBase):
         if self._performance_size not in self._SIZE_COLS:
             self._performance_size = "half"
 
-        self._cell_scale = self.__safe_scale(config.get("cell_scale", 100))
-        self._cell_radius = self.__safe_radius(config.get("cell_radius", 3.0))
+        self._cell_scale = self.__safe_scale(config.get("cell_scale", 110))
+        self._cell_gap = self.__safe_refresh(config.get("cell_gap", 2), 0, 8)
+        self._cell_radius = self.__safe_radius(config.get("cell_radius", 4.0))
 
         self._range = config.get("range", "1y")
         if self._range not in self._RANGE_DAYS:
@@ -229,11 +231,11 @@ class MediaCalendar(_PluginBase):
                                                         "component": "VTextField",
                                                         "props": {
                                                             "model": "cell_scale",
-                                                            "label": "格子尺寸缩放（80-130%）",
+                                                            "label": "格子尺寸缩放（70-150%）",
                                                             "type": "number",
-                                                            "min": 80,
-                                                            "max": 130,
-                                                            "placeholder": "100"
+                                                            "min": 70,
+                                                            "max": 150,
+                                                            "placeholder": "110"
                                                         }
                                                     }]
                                                 },
@@ -249,7 +251,22 @@ class MediaCalendar(_PluginBase):
                                                             "min": 0,
                                                             "max": 8,
                                                             "step": 0.5,
-                                                            "placeholder": "3"
+                                                            "placeholder": "4"
+                                                        }
+                                                    }]
+                                                },
+                                                {
+                                                    "component": "VCol",
+                                                    "props": {"cols": 12, "md": 3},
+                                                    "content": [{
+                                                        "component": "VTextField",
+                                                        "props": {
+                                                            "model": "cell_gap",
+                                                            "label": "格子间隔（0-8）",
+                                                            "type": "number",
+                                                            "min": 0,
+                                                            "max": 8,
+                                                            "placeholder": "2"
                                                         }
                                                     }]
                                                 },
@@ -396,6 +413,7 @@ class MediaCalendar(_PluginBase):
             "calendar_size": self._calendar_size,
             "performance_size": self._performance_size,
             "cell_scale": self._cell_scale,
+            "cell_gap": self._cell_gap,
             "cell_radius": self._cell_radius,
             "range": self._range,
             "label_style": self._label_style,
@@ -437,7 +455,7 @@ class MediaCalendar(_PluginBase):
                     "border": True
                 }
                 perf_data = self.__load_performance_data()
-                perf_series = self.__update_performance_series(perf_data, self._performance_window)
+                perf_series = self.__update_performance_series(perf_data, self._performance_window, self._performance_refresh)
                 elements = self.__build_performance_elements(perf_data, perf_series)
             else:
                 cols = self._SIZE_COLS.get(self._calendar_size, self._SIZE_COLS["two_third"])
@@ -476,7 +494,7 @@ class MediaCalendar(_PluginBase):
 
     @staticmethod
     def __safe_scale(raw_value: Any) -> int:
-        return MediaCalendar.__safe_refresh(raw_value, 80, 130)
+        return MediaCalendar.__safe_refresh(raw_value, 70, 150)
 
     @staticmethod
     def __safe_radius(raw_value: Any) -> float:
@@ -597,13 +615,20 @@ class MediaCalendar(_PluginBase):
             memory_usage = 0
 
         cpu = max(0.0, min(100.0, float(cpu)))
-        memory_usage = max(0, min(100, int(memory_usage)))
+        memory_percent = max(0, min(100, int(memory_usage)))
+        memory_mb = 0
+        try:
+            memory_mb = int(round(memory[0] / 1024 / 1024)) if memory and len(memory) > 0 else 0
+        except Exception:
+            memory_mb = 0
+        memory_mb = max(0, memory_mb)
         return {
             "cpu": round(cpu, 1),
-            "memory": memory_usage,
+            "memory_percent": memory_percent,
+            "memory_mb": memory_mb,
         }
 
-    def __update_performance_series(self, perf_data: Dict[str, Any], window_minutes: int) -> Dict[str, List[Any]]:
+    def __update_performance_series(self, perf_data: Dict[str, Any], window_minutes: int, sample_seconds: int) -> Dict[str, List[Any]]:
         key = "performance_series"
         raw = self.get_data(key) or []
         now = datetime.now()
@@ -615,7 +640,7 @@ class MediaCalendar(_PluginBase):
                 continue
             ts_text = item.get("ts")
             cpu_val = item.get("cpu")
-            mem_val = item.get("memory")
+            mem_val = item.get("memory_mb")
             try:
                 ts = datetime.fromisoformat(str(ts_text))
                 if ts.tzinfo is not None:
@@ -628,16 +653,17 @@ class MediaCalendar(_PluginBase):
                 normalized.append({
                     "ts": ts.isoformat(),
                     "cpu": max(0.0, min(100.0, cpu_num)),
-                    "memory": max(0.0, min(100.0, mem_num)),
+                    "memory_mb": max(0.0, mem_num),
                 })
 
         normalized.append({
             "ts": now.isoformat(),
             "cpu": perf_data["cpu"],
-            "memory": perf_data["memory"],
+            "memory_mb": perf_data["memory_mb"],
         })
 
-        max_points = max(60, window_minutes * 60 + 2)
+        points_by_window = int((window_minutes * 60) / max(1, sample_seconds)) + 2
+        max_points = max(60, points_by_window)
         if len(normalized) > max_points:
             normalized = normalized[-max_points:]
 
@@ -650,7 +676,7 @@ class MediaCalendar(_PluginBase):
             ts = datetime.fromisoformat(item["ts"])
             categories.append(ts.strftime("%H:%M:%S"))
             cpu_series.append(round(float(item["cpu"]), 1))
-            memory_series.append(round(float(item["memory"]), 1))
+            memory_series.append(round(float(item["memory_mb"]), 1))
 
         return {
             "categories": categories,
@@ -684,7 +710,7 @@ class MediaCalendar(_PluginBase):
 
         scale_ratio = self._cell_scale / 100
         cell_size = max(10, int(round(13 * scale_ratio)))
-        cell_gap = max(2, int(round(2 * scale_ratio)))
+        cell_gap = max(0, int(round(self._cell_gap * scale_ratio)))
         row_gap = max(1, int(round(1 * scale_ratio)))
         weekday_col_width = max(18, int(round(22 * scale_ratio)))
         calendar_width = week_count * (cell_size + cell_gap)
@@ -774,7 +800,7 @@ class MediaCalendar(_PluginBase):
                 },
             },
             "content": [
-                {"component": "span", "text": "Less"},
+                {"component": "span", "text": "less"},
                 *[
                     {
                         "component": "div",
@@ -789,33 +815,32 @@ class MediaCalendar(_PluginBase):
                     }
                     for level in range(5)
                 ],
-                {"component": "span", "text": "More"},
+                {"component": "span", "text": "more"},
             ],
         }
+
+        metric_md = 3 if (self._show_legend and not self._show_date_range) else (4 if not self._show_date_range else 3)
 
         stats_content = [
             {
                 "component": "VCol",
-                "props": {"cols": 12, "md": 4 if not self._show_date_range else 3},
+                "props": {"cols": 12, "md": metric_md},
                 "content": [
-                    {"component": "div", "props": {"class": "text-caption"}, "text": "总入库量"},
-                    {"component": "div", "props": {"class": "text-h6"}, "text": str(grid_data["total_count"])}
+                    {"component": "div", "props": {"class": "text-body-1"}, "text": f"总入库量：{grid_data['total_count']}"}
                 ],
             },
             {
                 "component": "VCol",
-                "props": {"cols": 12, "md": 4 if not self._show_date_range else 3},
+                "props": {"cols": 12, "md": metric_md},
                 "content": [
-                    {"component": "div", "props": {"class": "text-caption"}, "text": "活跃天数"},
-                    {"component": "div", "props": {"class": "text-h6"}, "text": str(grid_data["active_days"])}
+                    {"component": "div", "props": {"class": "text-body-1"}, "text": f"活跃天数：{grid_data['active_days']}"}
                 ],
             },
             {
                 "component": "VCol",
-                "props": {"cols": 12, "md": 4 if not self._show_date_range else 3},
+                "props": {"cols": 12, "md": metric_md},
                 "content": [
-                    {"component": "div", "props": {"class": "text-caption"}, "text": "峰值单日"},
-                    {"component": "div", "props": {"class": "text-h6"}, "text": str(grid_data["max_count"])}
+                    {"component": "div", "props": {"class": "text-body-1"}, "text": f"峰值单日：{grid_data['max_count']}"}
                 ],
             }
         ]
@@ -824,9 +849,15 @@ class MediaCalendar(_PluginBase):
                 "component": "VCol",
                 "props": {"cols": 12, "md": 3},
                 "content": [
-                    {"component": "div", "props": {"class": "text-caption"}, "text": "统计区间"},
-                    {"component": "div", "props": {"class": "text-body-2"}, "text": grid_data["date_range"]}
+                    {"component": "div", "props": {"class": "text-body-1"}, "text": f"统计区间：{grid_data['date_range']}"}
                 ],
+            })
+
+        if self._show_legend:
+            stats_content.append({
+                "component": "VCol",
+                "props": {"cols": 12, "md": 12 if self._show_date_range else 3},
+                "content": [legend],
             })
 
         stats_row = {
@@ -867,9 +898,6 @@ class MediaCalendar(_PluginBase):
                 ],
             },
         ]
-        if self._show_legend:
-            main_calendar_content.append(legend)
-
         main_calendar = {
             "component": "div",
             "props": {"style": {"overflowX": "auto"}},
@@ -925,45 +953,53 @@ class MediaCalendar(_PluginBase):
                     },
                     "xaxis": {
                         "categories": perf_series["categories"],
-                        "labels": {"show": True, "rotate": -35, "hideOverlappingLabels": True},
+                        "labels": {"show": False},
                     },
                     "yaxis": [
                         {"min": 0, "max": 100, "title": {"text": "CPU %"}},
-                        {"opposite": True, "min": 0, "max": 100, "title": {"text": "内存 %"}},
+                        {"opposite": True, "title": {"text": "内存 MB"}},
                     ],
                     "colors": ["#9155FD", "#16B1FF"],
-                    "legend": {"position": "top"},
+                    "legend": {"show": False},
                     "dataLabels": {"enabled": False},
                     "tooltip": {"shared": True, "intersect": False},
                 },
                 "series": [
-                    {"name": "CPU", "data": smooth_cpu},
-                    {"name": "内存", "data": smooth_memory},
+                    {"name": "CPU(%)", "data": smooth_cpu},
+                    {"name": "内存(MB)", "data": smooth_memory},
                 ],
             },
         }
 
         summary = {
-            "component": "VRow",
-            "props": {"class": "mt-1", "noGutters": True},
+            "component": "div",
+            "props": {
+                "class": "d-flex align-center justify-space-between",
+                "style": {
+                    "marginTop": "4px",
+                    "fontSize": "14px",
+                    "whiteSpace": "nowrap"
+                }
+            },
             "content": [
                 {
-                    "component": "VCol",
-                    "props": {"cols": 6},
-                    "content": [
-                        {"component": "div", "props": {"class": "text-caption"}, "text": "CPU"},
-                        {"component": "div", "props": {"class": "text-h6"}, "text": f"{perf_data['cpu']}%"},
-                    ],
+                    "component": "span",
+                    "text": f"CPU：{perf_data['cpu']}%  内存：{perf_data['memory_percent']}%（{perf_data['memory_mb']}MB）"
                 },
                 {
-                    "component": "VCol",
-                    "props": {"cols": 6},
+                    "component": "div",
+                    "props": {
+                        "class": "d-flex align-center",
+                        "style": {"gap": "6px", "fontSize": "11px", "color": "rgba(var(--v-theme-on-surface), 0.65)"}
+                    },
                     "content": [
-                        {"component": "div", "props": {"class": "text-caption"}, "text": "内存"},
-                        {"component": "div", "props": {"class": "text-h6"}, "text": f"{perf_data['memory']}%"},
-                    ],
-                },
-            ],
+                        {"component": "span", "text": "CPU"},
+                        {"component": "div", "props": {"style": {"width": "10px", "height": "10px", "borderRadius": "2px", "backgroundColor": "#9155FD"}}},
+                        {"component": "span", "text": "内存"},
+                        {"component": "div", "props": {"style": {"width": "10px", "height": "10px", "borderRadius": "2px", "backgroundColor": "#16B1FF"}}}
+                    ]
+                }
+            ]
         }
 
         return [{
