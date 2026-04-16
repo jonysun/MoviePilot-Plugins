@@ -11,7 +11,7 @@ class MediaCalendar(_PluginBase):
     plugin_name = "媒体入库日历图"
     plugin_desc = "以贡献日历风格展示入库活跃度与性能走势。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.0"
+    plugin_version = "1.2.1"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "mediacalendar_"
@@ -102,89 +102,76 @@ class MediaCalendar(_PluginBase):
         return []
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
-        return [
-            {
-                "component": "VForm",
-                "content": [
-                    {
-                        "component": "VRow",
-                        "content": [
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {"model": "enabled", "label": "启用插件"},
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VSwitch",
-                                        "props": {"model": "show_summary", "label": "显示摘要信息"},
-                                    }
-                                ],
-                            },
-                            {
-                                "component": "VCol",
-                                "props": {"cols": 12, "md": 4},
-                                "content": [
-                                    {
-                                        "component": "VTextField",
-                                        "props": {
-                                            "model": "refresh",
-                                            "label": "自动刷新间隔（秒）",
-                                            "type": "number",
-                                            "min": 30,
-                                            "placeholder": "300",
-                                        },
-                                    }
-                                ],
-                            },
-                        ],
+        return [{
+            "component": "VForm",
+            "content": [
+                {
+                    "component": "VRow",
+                    "props": {
+                        "style": {
+                            "marginTop": "0px"
+                        }
                     },
-                    {
-                        "component": "VTabs",
-                        "props": {
-                            "model": "_settings_tab",
-                            "style": {
-                                "margin-top": "8px",
-                                "margin-bottom": "12px",
-                            },
+                    "content": [
+                        {
+                            "component": "VCol",
+                            "props": {"cols": 12, "md": 4},
+                            "content": [
+                                {
+                                    "component": "VSwitch",
+                                    "props": {"model": "enabled", "label": "启用插件"}
+                                }
+                            ]
                         },
-                        "content": [
-                            {
-                                "component": "VTab",
-                                "props": {"value": "calendar_tab"},
-                                "text": "日历图设置",
-                            },
-                            {
-                                "component": "VTab",
-                                "props": {"value": "performance_tab"},
-                                "text": "CPU/内存设置",
-                            },
-                        ],
+                        {
+                            "component": "VCol",
+                            "props": {"cols": 12, "md": 4},
+                            "content": [
+                                {
+                                    "component": "VSwitch",
+                                    "props": {"model": "show_summary", "label": "显示摘要信息"}
+                                }
+                            ]
+                        },
+                        {
+                            "component": "VCol",
+                            "props": {"cols": 12, "md": 4},
+                            "content": [
+                                {
+                                    "component": "VTextField",
+                                    "props": {
+                                        "model": "refresh",
+                                        "label": "自动刷新间隔（秒）",
+                                        "type": "number",
+                                        "min": 30,
+                                        "placeholder": "300"
+                                    }
+                                }
+                            ]
+                        }
+                    ]
+                },
+                {
+                    "component": "VExpansionPanels",
+                    "props": {
+                        "variant": "accordion",
+                        "multiple": True
                     },
-                    {
-                        "component": "VWindow",
-                        "props": {"model": "_settings_tab"},
-                        "content": [
-                            {
-                                "component": "VWindowItem",
-                                "props": {"value": "calendar_tab"},
-                                "content": [
-                                    {
-                                        "component": "VRow",
-                                        "content": [
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "md": 3},
-                                                "content": [
-                                                    {
+                    "content": [
+                        {
+                            "component": "VExpansionPanel",
+                            "content": [
+                                {"component": "VExpansionPanelTitle", "text": "日历图设置"},
+                                {
+                                    "component": "VExpansionPanelText",
+                                    "content": [
+                                        {
+                                            "component": "VRow",
+                                            "content": [
+                                                {
+                                                    "component": "VCol",
+                                                    "props": {"cols": 12, "md": 3},
+                                                    "content": [{
                                                         "component": "VSelect",
                                                         "props": {
                                                             "model": "range",
@@ -193,17 +180,15 @@ class MediaCalendar(_PluginBase):
                                                                 {"title": "1个月", "value": "1m"},
                                                                 {"title": "3个月", "value": "3m"},
                                                                 {"title": "6个月", "value": "6m"},
-                                                                {"title": "1年", "value": "1y"},
-                                                            ],
-                                                        },
-                                                    }
-                                                ],
-                                            },
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "md": 3},
-                                                "content": [
-                                                    {
+                                                                {"title": "1年", "value": "1y"}
+                                                            ]
+                                                        }
+                                                    }]
+                                                },
+                                                {
+                                                    "component": "VCol",
+                                                    "props": {"cols": 12, "md": 3},
+                                                    "content": [{
                                                         "component": "VSelect",
                                                         "props": {
                                                             "model": "color_theme",
@@ -211,17 +196,15 @@ class MediaCalendar(_PluginBase):
                                                             "items": [
                                                                 {"title": "GitHub Green", "value": "github_green"},
                                                                 {"title": "High Contrast Green", "value": "high_contrast_green"},
-                                                                {"title": "MoviePilot Purple", "value": "mp_purple"},
-                                                            ],
-                                                        },
-                                                    }
-                                                ],
-                                            },
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "md": 3},
-                                                "content": [
-                                                    {
+                                                                {"title": "MoviePilot Purple", "value": "mp_purple"}
+                                                            ]
+                                                        }
+                                                    }]
+                                                },
+                                                {
+                                                    "component": "VCol",
+                                                    "props": {"cols": 12, "md": 3},
+                                                    "content": [{
                                                         "component": "VSelect",
                                                         "props": {
                                                             "model": "calendar_size",
@@ -230,17 +213,15 @@ class MediaCalendar(_PluginBase):
                                                                 {"title": "1/3（33%）", "value": "one_third"},
                                                                 {"title": "1/2（50%）", "value": "half"},
                                                                 {"title": "2/3（66%）", "value": "two_third"},
-                                                                {"title": "全宽（100%）", "value": "full"},
-                                                            ],
-                                                        },
-                                                    }
-                                                ],
-                                            },
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "md": 3},
-                                                "content": [
-                                                    {
+                                                                {"title": "全宽（100%）", "value": "full"}
+                                                            ]
+                                                        }
+                                                    }]
+                                                },
+                                                {
+                                                    "component": "VCol",
+                                                    "props": {"cols": 12, "md": 3},
+                                                    "content": [{
                                                         "component": "VTextField",
                                                         "props": {
                                                             "model": "cell_scale",
@@ -248,45 +229,46 @@ class MediaCalendar(_PluginBase):
                                                             "type": "number",
                                                             "min": 80,
                                                             "max": 130,
-                                                            "placeholder": "100",
-                                                        },
-                                                    }
-                                                ],
-                                            },
-                                        ],
-                                    },
-                                    {
-                                        "component": "VRow",
-                                        "content": [
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "md": 4},
-                                                "content": [
-                                                    {
+                                                            "placeholder": "100"
+                                                        }
+                                                    }]
+                                                }
+                                            ]
+                                        },
+                                        {
+                                            "component": "VRow",
+                                            "content": [
+                                                {
+                                                    "component": "VCol",
+                                                    "props": {"cols": 12, "md": 4},
+                                                    "content": [{
                                                         "component": "VSwitch",
                                                         "props": {
                                                             "model": "show_month_labels",
-                                                            "label": "显示月份标签",
-                                                        },
-                                                    }
-                                                ],
-                                            }
-                                        ],
-                                    },
-                                ],
-                            },
-                            {
-                                "component": "VWindowItem",
-                                "props": {"value": "performance_tab"},
-                                "content": [
-                                    {
-                                        "component": "VRow",
-                                        "content": [
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "md": 4},
-                                                "content": [
-                                                    {
+                                                            "label": "显示月份标签"
+                                                        }
+                                                    }]
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        },
+                        {
+                            "component": "VExpansionPanel",
+                            "content": [
+                                {"component": "VExpansionPanelTitle", "text": "CPU/内存设置"},
+                                {
+                                    "component": "VExpansionPanelText",
+                                    "content": [
+                                        {
+                                            "component": "VRow",
+                                            "content": [
+                                                {
+                                                    "component": "VCol",
+                                                    "props": {"cols": 12, "md": 4},
+                                                    "content": [{
                                                         "component": "VSelect",
                                                         "props": {
                                                             "model": "performance_size",
@@ -295,17 +277,15 @@ class MediaCalendar(_PluginBase):
                                                                 {"title": "1/3（33%）", "value": "one_third"},
                                                                 {"title": "1/2（50%）", "value": "half"},
                                                                 {"title": "2/3（66%）", "value": "two_third"},
-                                                                {"title": "全宽（100%）", "value": "full"},
-                                                            ],
-                                                        },
-                                                    }
-                                                ],
-                                            },
-                                            {
-                                                "component": "VCol",
-                                                "props": {"cols": 12, "md": 4},
-                                                "content": [
-                                                    {
+                                                                {"title": "全宽（100%）", "value": "full"}
+                                                            ]
+                                                        }
+                                                    }]
+                                                },
+                                                {
+                                                    "component": "VCol",
+                                                    "props": {"cols": 12, "md": 4},
+                                                    "content": [{
                                                         "component": "VTextField",
                                                         "props": {
                                                             "model": "performance_height",
@@ -313,20 +293,20 @@ class MediaCalendar(_PluginBase):
                                                             "type": "number",
                                                             "min": 120,
                                                             "max": 320,
-                                                            "placeholder": "190",
-                                                        },
-                                                    }
-                                                ],
-                                            },
-                                        ],
-                                    }
-                                ],
-                            },
-                        ],
-                    },
-                ],
-            }
-        ], {
+                                                            "placeholder": "190"
+                                                        }
+                                                    }]
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                }
+                            ]
+                        }
+                    ]
+                }
+            ]
+        }], {
             "enabled": self._enabled,
             "refresh": self._refresh,
             "show_summary": self._show_summary,
@@ -338,7 +318,6 @@ class MediaCalendar(_PluginBase):
             "cell_scale": self._cell_scale,
             "range": self._range,
             "performance_height": self._performance_height,
-            "_settings_tab": "calendar_tab",
         }
 
     def get_page(self) -> List[dict]:
