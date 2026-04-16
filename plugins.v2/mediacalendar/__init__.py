@@ -11,7 +11,7 @@ class MediaCalendar(_PluginBase):
     plugin_name = "媒体入库日历图"
     plugin_desc = "以贡献日历风格展示入库活跃度与性能走势。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.2"
+    plugin_version = "1.2.3"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "mediacalendar_"
@@ -332,7 +332,7 @@ class MediaCalendar(_PluginBase):
     def get_dashboard_meta(self) -> Optional[List[Dict[str, str]]]:
         return [
             {"key": "calendar", "name": "媒体入库日历图"},
-            {"key": "performance", "name": "媒体入库性能"},
+            {"key": "performance", "name": "主机性能"},
         ]
 
     def get_dashboard(self, key: str = None, **kwargs) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], List[dict]]]:
@@ -340,13 +340,15 @@ class MediaCalendar(_PluginBase):
             return None
 
         key = key or "calendar"
+        cols = {"cols": 12}
+        attrs = {"refresh": self._refresh, "title": "媒体入库组件", "border": True}
 
         try:
             if key == "performance":
                 cols = self._SIZE_COLS.get(self._performance_size, self._SIZE_COLS["half"])
                 attrs = {
                     "refresh": self._refresh,
-                    "title": "媒体入库性能",
+                    "title": "主机性能",
                     "border": True
                 }
                 perf_data = self.__load_performance_data()
@@ -363,12 +365,6 @@ class MediaCalendar(_PluginBase):
                 elements = self.__build_calendar_elements(grid_data)
             return cols, attrs, elements
         except Exception as err:
-            cols = {"cols": 12}
-            attrs = {
-                "refresh": self._refresh,
-                "title": "媒体入库组件",
-                "border": True
-            }
             return cols, attrs, [
                 {
                     "component": "VAlert",
@@ -508,11 +504,23 @@ class MediaCalendar(_PluginBase):
 
     @staticmethod
     def __load_performance_data() -> Dict[str, Any]:
-        cpu = SystemUtils.cpu_usage()
-        memory = SystemUtils.memory_usage()
-        memory_usage = int(memory[1]) if memory and len(memory) > 1 else 0
+        try:
+            cpu = SystemUtils.cpu_usage()
+            memory = SystemUtils.memory_usage()
+            memory_usage = int(memory[1]) if memory and len(memory) > 1 else 0
+        except Exception:
+            cpu = 0
+            memory_usage = 0
+
+        if not isinstance(cpu, (int, float)) or not math.isfinite(float(cpu)):
+            cpu = 0
+        if not isinstance(memory_usage, (int, float)):
+            memory_usage = 0
+
+        cpu = max(0.0, min(100.0, float(cpu)))
+        memory_usage = max(0, min(100, int(memory_usage)))
         return {
-            "cpu": round(float(cpu), 1),
+            "cpu": round(cpu, 1),
             "memory": memory_usage,
         }
 
