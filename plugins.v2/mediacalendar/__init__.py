@@ -360,20 +360,21 @@ class MediaCalendar(_PluginBase):
         if key and key not in {"calendar", "performance"}:
             return None
 
-        key = key or "calendar"
+        if self._dashboard_size == "half":
+            cols = {"cols": 12, "md": 6}
+        elif self._dashboard_size == "three_quarter":
+            cols = {"cols": 12, "md": 9}
+        else:
+            cols = {"cols": 12}
+        attrs = {
+            "refresh": self._refresh,
+            "title": "媒体入库日历图",
+            "border": True
+        }
 
         try:
-            if key == "performance":
-                cols = self._SIZE_COLS.get(self._performance_size, self._SIZE_COLS["half"])
-                attrs = {"refresh": self._refresh, "title": "媒体入库性能", "border": True}
-                perf_data = self.__load_performance_data()
-                elements = self.__build_performance_elements(perf_data=perf_data)
-            else:
-                cols = self._SIZE_COLS.get(self._calendar_size, self._SIZE_COLS["two_third"])
-                attrs = {"refresh": self._refresh, "title": "媒体入库日历图", "border": True}
-                days = self._RANGE_DAYS.get(self._range, 365)
-                grid_data = self.__build_calendar_grid(days=days)
-                elements = self.__build_calendar_elements(grid_data=grid_data)
+            grid_data = self.__build_calendar_grid(days=365)
+            elements = self.__build_dashboard_elements(grid_data)
             return cols, attrs, elements
         except Exception as err:
             return cols, attrs, [
