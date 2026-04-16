@@ -888,21 +888,21 @@ class MediaCalendar(_PluginBase):
                 "component": "VCol",
                 "props": {"cols": 12, "md": metric_md},
                 "content": [
-                    {"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "10px", "fontWeight": 500, "color": "#111111"}}, "text": f"总入库量：{grid_data['total_count']}"}
+                    {"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "11px", "color": "rgba(var(--v-theme-on-surface), 0.65)"}}, "text": f"总入库量：{grid_data['total_count']}"}
                 ],
             },
             {
                 "component": "VCol",
                 "props": {"cols": 12, "md": metric_md},
                 "content": [
-                    {"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "10px", "fontWeight": 500, "color": "#111111"}}, "text": f"活跃天数：{grid_data['active_days']}"}
+                    {"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "11px", "color": "rgba(var(--v-theme-on-surface), 0.65)"}}, "text": f"活跃天数：{grid_data['active_days']}"}
                 ],
             },
             {
                 "component": "VCol",
                 "props": {"cols": 12, "md": metric_md},
                 "content": [
-                    {"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "10px", "fontWeight": 500, "color": "#111111"}}, "text": f"峰值单日：{grid_data['max_count']}"}
+                    {"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "11px", "color": "rgba(var(--v-theme-on-surface), 0.65)"}}, "text": f"峰值单日：{grid_data['max_count']}"}
                 ],
             }
         ]
@@ -911,7 +911,7 @@ class MediaCalendar(_PluginBase):
                 "component": "VCol",
                 "props": {"cols": 12, "md": 3},
                 "content": [
-                    {"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "10px", "fontWeight": 500, "color": "#111111"}}, "text": f"统计区间：{grid_data['date_range']}"}
+                    {"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "11px", "color": "rgba(var(--v-theme-on-surface), 0.65)"}}, "text": f"统计区间：{grid_data['date_range']}"}
                 ],
             })
 
@@ -927,7 +927,7 @@ class MediaCalendar(_PluginBase):
             "props": {
                 "class": "mt-0",
                 "noGutters": True,
-                "style": {"marginTop": "2px", "marginBottom": "0"},
+                "style": {"marginTop": "4px", "marginBottom": "0"},
             },
             "content": stats_content,
         }
