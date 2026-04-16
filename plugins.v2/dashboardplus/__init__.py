@@ -3,6 +3,7 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
 from app.db.models.site import Site
+from app.db.models.siteicon import SiteIcon
 from app.db.models.sitestatistic import SiteStatistic
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.plugins import _PluginBase
@@ -13,7 +14,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库日历、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.0.1"
+    plugin_version = "1.0.2"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -40,7 +41,7 @@ class DashboardPlus(_PluginBase):
     # performance settings
     _performance_size: str = "half"
     _performance_height: int = 190
-    _performance_refresh: int = 1
+    _performance_refresh: int = 3
     _performance_window: int = 10
     _performance_cpu_color: str = "#9155FD"
     _performance_memory_color: str = "#16B1FF"
@@ -49,6 +50,7 @@ class DashboardPlus(_PluginBase):
     _site_stat_size: str = "full"
     _site_stat_refresh: int = 300
     _site_stat_show_overview: bool = True
+    _site_stat_show_logo: bool = True
 
     # storage + media compact settings
     _storage_media_size: str = "half"
@@ -126,13 +128,14 @@ class DashboardPlus(_PluginBase):
         self._calendar_refresh = self.__safe_refresh(config.get("calendar_refresh", 300), 1, 3600)
 
         self._performance_height = self.__safe_refresh(config.get("performance_height", 190), 120, 320)
-        self._performance_refresh = self.__safe_refresh(config.get("performance_refresh", 1), 1, 60)
+        self._performance_refresh = self.__safe_refresh(config.get("performance_refresh", 3), 1, 60)
         self._performance_window = self.__safe_refresh(config.get("performance_window", 10), 1, 60)
         self._performance_cpu_color = self.__safe_color(config.get("performance_cpu_color", "#9155FD"), "#9155FD")
         self._performance_memory_color = self.__safe_color(config.get("performance_memory_color", "#16B1FF"), "#16B1FF")
 
         self._site_stat_refresh = self.__safe_refresh(config.get("site_stat_refresh", 300), 10, 3600)
         self._site_stat_show_overview = self.__to_bool(config.get("site_stat_show_overview", True), default=True)
+        self._site_stat_show_logo = self.__to_bool(config.get("site_stat_show_logo", True), default=True)
 
         self._storage_media_refresh = self.__safe_refresh(config.get("storage_media_refresh", 300), 10, 3600)
 
@@ -334,12 +337,7 @@ class DashboardPlus(_PluginBase):
                                                     "component": "VSwitch",
                                                     "props": {"model": "show_month_labels", "label": "显示月份标签"}
                                                 }]
-                                            }
-                                        ]
-                                    },
-                                    {
-                                        "component": "VRow",
-                                        "content": [
+                                            },
                                             {
                                                 "component": "VCol",
                                                 "props": {"cols": 12, "md": 3},
@@ -347,7 +345,12 @@ class DashboardPlus(_PluginBase):
                                                     "component": "VSwitch",
                                                     "props": {"model": "show_legend", "label": "显示少到多图例"}
                                                 }]
-                                            },
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "component": "VRow",
+                                        "content": [
                                             {
                                                 "component": "VCol",
                                                 "props": {"cols": 12, "md": 3},
@@ -374,10 +377,10 @@ class DashboardPlus(_PluginBase):
                                         "content": [
                                             {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VSelect", "props": {"model": "performance_size", "label": "性能组件宽度", "items": [{"title": "1/3（33%）", "value": "one_third"}, {"title": "1/2（50%）", "value": "half"}, {"title": "2/3（66%）", "value": "two_third"}, {"title": "全宽（100%）", "value": "full"}]}}]},
                                             {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VTextField", "props": {"model": "performance_height", "label": "性能图高度（120-320）", "type": "number", "min": 120, "max": 320, "placeholder": "190"}}]},
-                                            {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VTextField", "props": {"model": "performance_refresh", "label": "性能图刷新间隔（秒）", "type": "number", "min": 1, "max": 60, "placeholder": "1"}}]},
+                                            {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VTextField", "props": {"model": "performance_refresh", "label": "性能图刷新间隔（秒）", "type": "number", "min": 1, "max": 60, "placeholder": "3"}}]},
                                             {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VTextField", "props": {"model": "performance_window", "label": "折线窗口（分钟1-60）", "type": "number", "min": 1, "max": 60, "placeholder": "10"}}]},
-                                            {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VTextField", "props": {"model": "performance_cpu_color", "label": "CPU折线颜色（HEX）", "placeholder": "#9155FD"}}]},
-                                            {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VTextField", "props": {"model": "performance_memory_color", "label": "内存折线颜色（HEX）", "placeholder": "#16B1FF"}}]}
+                                            {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VSelect", "props": {"model": "performance_cpu_color", "label": "CPU折线颜色", "items": [{"title": "紫色", "value": "#9155FD"}, {"title": "红色", "value": "#EF4444"}, {"title": "橙色", "value": "#F59E0B"}, {"title": "绿色", "value": "#22C55E"}, {"title": "蓝色", "value": "#3B82F6"}]}}]},
+                                            {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VSelect", "props": {"model": "performance_memory_color", "label": "内存折线颜色", "items": [{"title": "蓝色", "value": "#16B1FF"}, {"title": "紫色", "value": "#9155FD"}, {"title": "红色", "value": "#EF4444"}, {"title": "橙色", "value": "#F59E0B"}, {"title": "绿色", "value": "#22C55E"}]}}]}
                                         ]
                                     }
                                 ]
@@ -395,7 +398,8 @@ class DashboardPlus(_PluginBase):
                                     "content": [
                                         {"component": "VCol", "props": {"cols": 12, "md": 4}, "content": [{"component": "VSelect", "props": {"model": "site_stat_size", "label": "组件宽度", "items": [{"title": "1/3（33%）", "value": "one_third"}, {"title": "1/2（50%）", "value": "half"}, {"title": "2/3（66%）", "value": "two_third"}, {"title": "全宽（100%）", "value": "full"}]}}]},
                                         {"component": "VCol", "props": {"cols": 12, "md": 4}, "content": [{"component": "VTextField", "props": {"model": "site_stat_refresh", "label": "刷新间隔（秒）", "type": "number", "min": 10, "max": 3600, "placeholder": "300"}}]},
-                                        {"component": "VCol", "props": {"cols": 12, "md": 4}, "content": [{"component": "VSwitch", "props": {"model": "site_stat_show_overview", "label": "显示统计概览"}}]}
+                                        {"component": "VCol", "props": {"cols": 12, "md": 4}, "content": [{"component": "VSwitch", "props": {"model": "site_stat_show_overview", "label": "显示统计概览"}}]},
+                                        {"component": "VCol", "props": {"cols": 12, "md": 4}, "content": [{"component": "VSwitch", "props": {"model": "site_stat_show_logo", "label": "显示站点Logo"}}]}
                                     ]
                                 }]
                             }
@@ -450,6 +454,7 @@ class DashboardPlus(_PluginBase):
             "performance_memory_color": self._performance_memory_color,
             "site_stat_refresh": self._site_stat_refresh,
             "site_stat_show_overview": self._site_stat_show_overview,
+            "site_stat_show_logo": self._site_stat_show_logo,
             "storage_media_refresh": self._storage_media_refresh,
         }
 
@@ -760,16 +765,16 @@ class DashboardPlus(_PluginBase):
 
         metric_md = 3 if (self._show_legend and not self._show_date_range) else (4 if not self._show_date_range else 3)
         stats_content = [
-            {"component": "VCol", "props": {"cols": 12, "md": metric_md}, "content": [{"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "11px", "color": "rgba(var(--v-theme-on-surface), 0.65)"}}, "text": f"总入库量：{grid_data['total_count']}"}]},
-            {"component": "VCol", "props": {"cols": 12, "md": metric_md}, "content": [{"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "11px", "color": "rgba(var(--v-theme-on-surface), 0.65)"}}, "text": f"活跃天数：{grid_data['active_days']}"}]},
-            {"component": "VCol", "props": {"cols": 12, "md": metric_md}, "content": [{"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "11px", "color": "rgba(var(--v-theme-on-surface), 0.65)"}}, "text": f"峰值单日：{grid_data['max_count']}"}]}
+            {"component": "VCol", "props": {"cols": 12, "md": metric_md}, "content": [{"component": "div", "props": {"style": {"fontSize": "11px", "lineHeight": "1.2", "color": "rgba(var(--v-theme-on-surface), 0.65)"}}, "text": f"总入库量：{grid_data['total_count']}"}]},
+            {"component": "VCol", "props": {"cols": 12, "md": metric_md}, "content": [{"component": "div", "props": {"style": {"fontSize": "11px", "lineHeight": "1.2", "color": "rgba(var(--v-theme-on-surface), 0.65)"}}, "text": f"活跃天数：{grid_data['active_days']}"}]},
+            {"component": "VCol", "props": {"cols": 12, "md": metric_md}, "content": [{"component": "div", "props": {"style": {"fontSize": "11px", "lineHeight": "1.2", "color": "rgba(var(--v-theme-on-surface), 0.65)"}}, "text": f"峰值单日：{grid_data['max_count']}"}]}
         ]
         if self._show_date_range:
-            stats_content.append({"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "11px", "color": "rgba(var(--v-theme-on-surface), 0.65)"}}, "text": f"统计区间：{grid_data['date_range']}"}]})
+            stats_content.append({"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "div", "props": {"style": {"fontSize": "11px", "lineHeight": "1.2", "color": "rgba(var(--v-theme-on-surface), 0.65)"}}, "text": f"统计区间：{grid_data['date_range']}"}]})
         if self._show_legend:
             stats_content.append({"component": "VCol", "props": {"cols": 12, "md": 12 if self._show_date_range else 3}, "content": [legend]})
 
-        stats_row = {"component": "VRow", "props": {"class": "mt-0", "noGutters": True, "style": {"marginTop": "4px", "marginBottom": "0"}}, "content": stats_content}
+        stats_row = {"component": "VRow", "props": {"class": "mt-0", "noGutters": True, "style": {"marginTop": "8px", "marginBottom": "0"}}, "content": stats_content}
 
         main_calendar_content = [{
             "component": "div",
@@ -855,6 +860,7 @@ class DashboardPlus(_PluginBase):
     def __build_site_statistics_elements(self) -> List[dict]:
         sites = Site.list_order_by_pri() or []
         site_stats = SiteStatistic.list() or []
+        site_icons = {str(icon.domain or ""): icon for icon in SiteIcon.list() or []}
         stat_map = {str(item.domain or ""): item for item in site_stats}
 
         status_label = {
@@ -893,6 +899,7 @@ class DashboardPlus(_PluginBase):
         connected = slow = failed = unknown = 0
         for site in sites:
             st = stat_map.get(str(site.domain or ""))
+            icon = site_icons.get(str(site.domain or ""))
             status = _status(st)
             if status == "connected":
                 connected += 1
@@ -919,23 +926,50 @@ class DashboardPlus(_PluginBase):
 
             rows.append({
                 "component": "VRow",
-                "props": {"class": "py-2 px-2", "noGutters": True},
+                "props": {"class": "py-2 px-2", "noGutters": True, "style": {"borderBottom": "1px solid rgba(var(--v-border-color), 0.12)"}},
                 "content": [
-                    {"component": "VCol", "props": {"cols": 4}, "content": [{"component": "div", "props": {"class": "text-body-2"}, "text": site.name or site.domain or "-"}]},
                     {
                         "component": "VCol",
-                        "props": {"cols": 2},
+                        "props": {"cols": 5},
+                        "content": [
+                            {
+                                "component": "div",
+                                "props": {"class": "d-flex align-center", "style": {"gap": "8px"}},
+                                "content": [
+                                    {
+                                        "component": "VAvatar",
+                                        "props": {"size": 28, "rounded": True, "color": "transparent"},
+                                        "content": [
+                                            {
+                                                "component": "VImg" if (self._site_stat_show_logo and icon and (icon.base64 or icon.url)) else "VIcon",
+                                                "props": {"src": icon.base64 if icon and icon.base64 else (icon.url if icon else None), "cover": True} if (self._site_stat_show_logo and icon and (icon.base64 or icon.url)) else {"icon": "mdi-wifi", "size": 18, "color": status_color[status]}
+                                            }
+                                        ]
+                                    },
+                                    {
+                                        "component": "div",
+                                        "content": [
+                                            {"component": "div", "props": {"class": "text-body-2 font-weight-medium"}, "text": site.name or site.domain or "-"},
+                                            {"component": "div", "props": {"class": "text-caption"}, "text": site.domain or "-"}
+                                        ]
+                                    }
+                                ]
+                            }
+                        ]
+                    },
+                    {
+                        "component": "VCol",
+                        "props": {"cols": 3},
                         "content": [{
                             "component": "div",
-                            "props": {"class": "d-flex align-center", "style": {"gap": "4px"}},
+                            "props": {"class": "d-flex align-center", "style": {"gap": "4px", "height": "100%"}},
                             "content": [
                                 {"component": "VIcon", "props": {"icon": status_icon[status], "size": 16, "color": status_color[status]}},
-                                {"component": "span", "props": {"class": f"text-{status_color[status]}"}, "text": status_label[status]}
+                                {"component": "span", "props": {"class": f"text-{status_color[status]}"}, "text": f"连接{status_label[status]}"}
                             ]
                         }]
                     },
                     {"component": "VCol", "props": {"cols": 2}, "content": [{"component": "span", "props": {"class": f"text-{seconds_color}"}, "text": f"{seconds}s"}]},
-                    {"component": "VCol", "props": {"cols": 2}, "content": [{"component": "div", "props": {"class": "text-body-2"}, "text": f"{success}/{fail}"}]},
                     {"component": "VCol", "props": {"cols": 2}, "content": [{"component": "div", "props": {"class": "text-body-2"}, "text": rate}]},
                 ]
             })
@@ -945,9 +979,9 @@ class DashboardPlus(_PluginBase):
             "props": {"class": "px-2 pb-2", "noGutters": True},
             "content": [
                 {"component": "VCol", "props": {"cols": 3}, "content": [{"component": "div", "props": {"class": "text-caption"}, "text": "总站点"}, {"component": "div", "props": {"class": "text-h6"}, "text": str(len(sites))}]},
-                {"component": "VCol", "props": {"cols": 3}, "content": [{"component": "div", "props": {"class": "text-caption"}, "text": "正常"}, {"component": "div", "props": {"class": "text-h6 text-success"}, "text": str(connected)}]},
-                {"component": "VCol", "props": {"cols": 3}, "content": [{"component": "div", "props": {"class": "text-caption"}, "text": "慢速"}, {"component": "div", "props": {"class": "text-h6 text-warning"}, "text": str(slow)}]},
-                {"component": "VCol", "props": {"cols": 3}, "content": [{"component": "div", "props": {"class": "text-caption"}, "text": "失败"}, {"component": "div", "props": {"class": "text-h6 text-error"}, "text": str(failed)}]},
+                {"component": "VCol", "props": {"cols": 3}, "content": [{"component": "div", "props": {"class": "text-caption"}, "text": "正常站点"}, {"component": "div", "props": {"class": "text-h6 text-success"}, "text": str(connected)}]},
+                {"component": "VCol", "props": {"cols": 3}, "content": [{"component": "div", "props": {"class": "text-caption"}, "text": "缓慢站点"}, {"component": "div", "props": {"class": "text-h6 text-warning"}, "text": str(slow)}]},
+                {"component": "VCol", "props": {"cols": 3}, "content": [{"component": "div", "props": {"class": "text-caption"}, "text": "失败站点"}, {"component": "div", "props": {"class": "text-h6 text-error"}, "text": str(failed)}]},
             ]
         }
 
@@ -958,16 +992,24 @@ class DashboardPlus(_PluginBase):
         table_parts = [
             {"component": "VDivider"},
             {"component": "VRow", "props": {"class": "px-2 py-1", "noGutters": True}, "content": [
-                {"component": "VCol", "props": {"cols": 4}, "text": "站点"},
-                {"component": "VCol", "props": {"cols": 2}, "text": "状态"},
-                {"component": "VCol", "props": {"cols": 2}, "text": "耗时"},
-                {"component": "VCol", "props": {"cols": 2}, "text": "成功/失败"},
+                {"component": "VCol", "props": {"cols": 5}, "text": "站点"},
+                {"component": "VCol", "props": {"cols": 3}, "text": "连接状态"},
+                {"component": "VCol", "props": {"cols": 2}, "text": "平均耗时"},
                 {"component": "VCol", "props": {"cols": 2}, "text": "成功率"},
             ]},
             {"component": "VDivider"}
         ]
         table_parts.extend(rows if rows else [{"component": "VAlert", "props": {"type": "info", "variant": "tonal", "density": "compact"}, "text": "暂无站点统计数据"}])
-        elements.extend(table_parts)
+        elements.append({
+            "component": "div",
+            "props": {
+                "style": {
+                    "maxHeight": "460px",
+                    "overflowY": "auto"
+                }
+            },
+            "content": table_parts
+        })
 
         return [{"component": "VRow", "content": [{"component": "VCol", "props": {"cols": 12}, "content": elements}]}]
 
@@ -1033,8 +1075,7 @@ class DashboardPlus(_PluginBase):
                                         "bottom": "0",
                                         "width": "110px",
                                         "height": "80px",
-                                        "background": "linear-gradient(135deg, rgba(145,85,253,0.12), rgba(145,85,253,0.0))",
-                                        "borderTopLeftRadius": "18px"
+                                        "background": "transparent"
                                     }
                                 }
                             },
@@ -1055,7 +1096,7 @@ class DashboardPlus(_PluginBase):
                                 "content": [
                                     {
                                         "component": "VCol",
-                                        "props": {"cols": 6, "class": "py-2"},
+                                        "props": {"cols": 3, "class": "py-2"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
                                                 {"component": "VAvatar", "props": {"size": 42, "color": compact_media_items[0][3], "class": "me-2 elevation-1", "rounded": True}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[0][2], "size": 24}}]},
@@ -1068,7 +1109,7 @@ class DashboardPlus(_PluginBase):
                                     },
                                     {
                                         "component": "VCol",
-                                        "props": {"cols": 6, "class": "py-2"},
+                                        "props": {"cols": 3, "class": "py-2"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
                                                 {"component": "VAvatar", "props": {"size": 42, "color": compact_media_items[1][3], "class": "me-2 elevation-1", "rounded": True}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[1][2], "size": 24}}]},
@@ -1081,7 +1122,7 @@ class DashboardPlus(_PluginBase):
                                     },
                                     {
                                         "component": "VCol",
-                                        "props": {"cols": 6, "class": "py-2"},
+                                        "props": {"cols": 3, "class": "py-2"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
                                                 {"component": "VAvatar", "props": {"size": 42, "color": compact_media_items[2][3], "class": "me-2 elevation-1", "rounded": True}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[2][2], "size": 24}}]},
@@ -1094,7 +1135,7 @@ class DashboardPlus(_PluginBase):
                                     },
                                     {
                                         "component": "VCol",
-                                        "props": {"cols": 6, "class": "py-2"},
+                                        "props": {"cols": 3, "class": "py-2"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
                                                 {"component": "VAvatar", "props": {"size": 42, "color": compact_media_items[3][3], "class": "me-2 elevation-1", "rounded": True}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[3][2], "size": 24}}]},
