@@ -8,10 +8,10 @@ from app.utils.system import SystemUtils
 
 
 class MediaCalendar(_PluginBase):
-    plugin_name = "媒体入库日历图"
+    plugin_name = "仪表板增强"
     plugin_desc = "以贡献日历风格展示入库活跃度与主机性能。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.3.3"
+    plugin_version = "1.3.4"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "mediacalendar_"
@@ -26,6 +26,7 @@ class MediaCalendar(_PluginBase):
     _show_date_range: bool = False
     _color_theme: str = "mp_purple"
     _show_month_labels: bool = True
+    _calendar_align: str = "left"
     _calendar_size: str = "two_third"
     _cell_scale: int = 110
     _cell_gap: int = 2
@@ -39,6 +40,8 @@ class MediaCalendar(_PluginBase):
     _performance_height: int = 190
     _performance_refresh: int = 1
     _performance_window: int = 10
+    _performance_cpu_color: str = "#9155FD"
+    _performance_memory_color: str = "#16B1FF"
 
     _RANGE_DAYS: Dict[str, int] = {
         "1m": 30,
@@ -76,6 +79,9 @@ class MediaCalendar(_PluginBase):
             self._color_theme = "mp_purple"
 
         self._show_month_labels = self.__to_bool(config.get("show_month_labels", True), default=True)
+        self._calendar_align = config.get("calendar_align", "left")
+        if self._calendar_align not in {"left", "center", "right"}:
+            self._calendar_align = "left"
 
         dashboard_size = config.get("dashboard_size", "two_third")
         self._calendar_size = config.get("calendar_size", dashboard_size)
@@ -103,6 +109,8 @@ class MediaCalendar(_PluginBase):
         self._performance_height = self.__safe_refresh(config.get("performance_height", 190), 120, 320)
         self._performance_refresh = self.__safe_refresh(config.get("performance_refresh", 1), 1, 60)
         self._performance_window = self.__safe_refresh(config.get("performance_window", 10), 1, 60)
+        self._performance_cpu_color = self.__safe_color(config.get("performance_cpu_color", "#9155FD"), "#9155FD")
+        self._performance_memory_color = self.__safe_color(config.get("performance_memory_color", "#16B1FF"), "#16B1FF")
 
     def get_state(self) -> bool:
         return self._enabled
@@ -290,6 +298,22 @@ class MediaCalendar(_PluginBase):
                                                     "component": "VCol",
                                                     "props": {"cols": 12, "md": 3},
                                                     "content": [{
+                                                        "component": "VSelect",
+                                                        "props": {
+                                                            "model": "calendar_align",
+                                                            "label": "日历本体对齐",
+                                                            "items": [
+                                                                {"title": "靠左（默认）", "value": "left"},
+                                                                {"title": "居中", "value": "center"},
+                                                                {"title": "靠右", "value": "right"}
+                                                            ]
+                                                        }
+                                                    }]
+                                                },
+                                                {
+                                                    "component": "VCol",
+                                                    "props": {"cols": 12, "md": 3},
+                                                    "content": [{
                                                         "component": "VSwitch",
                                                         "props": {"model": "show_month_labels", "label": "显示月份标签"}
                                                     }]
@@ -392,6 +416,30 @@ class MediaCalendar(_PluginBase):
                                                             "placeholder": "10"
                                                         }
                                                     }]
+                                                },
+                                                {
+                                                    "component": "VCol",
+                                                    "props": {"cols": 12, "md": 3},
+                                                    "content": [{
+                                                        "component": "VTextField",
+                                                        "props": {
+                                                            "model": "performance_cpu_color",
+                                                            "label": "CPU折线颜色（HEX）",
+                                                            "placeholder": "#9155FD"
+                                                        }
+                                                    }]
+                                                },
+                                                {
+                                                    "component": "VCol",
+                                                    "props": {"cols": 12, "md": 3},
+                                                    "content": [{
+                                                        "component": "VTextField",
+                                                        "props": {
+                                                            "model": "performance_memory_color",
+                                                            "label": "内存折线颜色（HEX）",
+                                                            "placeholder": "#16B1FF"
+                                                        }
+                                                    }]
                                                 }
                                             ]
                                         }
@@ -409,6 +457,7 @@ class MediaCalendar(_PluginBase):
             "show_date_range": self._show_date_range,
             "color_theme": self._color_theme,
             "show_month_labels": self._show_month_labels,
+            "calendar_align": self._calendar_align,
             "dashboard_size": self._calendar_size,
             "calendar_size": self._calendar_size,
             "performance_size": self._performance_size,
@@ -421,6 +470,8 @@ class MediaCalendar(_PluginBase):
             "performance_height": self._performance_height,
             "performance_refresh": self._performance_refresh,
             "performance_window": self._performance_window,
+            "performance_cpu_color": self._performance_cpu_color,
+            "performance_memory_color": self._performance_memory_color,
         }
 
     def get_page(self) -> List[dict]:
@@ -507,6 +558,15 @@ class MediaCalendar(_PluginBase):
             return value
         except Exception:
             return 3.0
+
+    @staticmethod
+    def __safe_color(raw_value: Any, default: str) -> str:
+        value = str(raw_value or "").strip()
+        if len(value) == 7 and value.startswith("#"):
+            hex_part = value[1:]
+            if all(ch in "0123456789abcdefABCDEF" for ch in hex_part):
+                return value
+        return default
 
     @staticmethod
     def __to_bool(value: Any, default: bool = False) -> bool:
@@ -712,7 +772,8 @@ class MediaCalendar(_PluginBase):
         cell_size = max(10, int(round(13 * scale_ratio)))
         cell_gap = max(0, int(round(self._cell_gap * scale_ratio)))
         row_gap = max(1, int(round(1 * scale_ratio)))
-        weekday_col_width = max(18, int(round(22 * scale_ratio)))
+        weekday_col_base = 30 if self._label_style == "english_abbr" else 22
+        weekday_col_width = max(20, int(round(weekday_col_base * scale_ratio)))
         calendar_width = week_count * (cell_size + cell_gap)
         radius = f"{self._cell_radius:.1f}px"
 
@@ -774,6 +835,7 @@ class MediaCalendar(_PluginBase):
                         "textAlign": "right",
                         "paddingRight": "4px",
                         "color": "rgba(var(--v-theme-on-surface), 0.65)",
+                        "whiteSpace": "nowrap",
                     }
                 },
                 "text": weekday_labels[weekday],
@@ -826,21 +888,21 @@ class MediaCalendar(_PluginBase):
                 "component": "VCol",
                 "props": {"cols": 12, "md": metric_md},
                 "content": [
-                    {"component": "div", "props": {"class": "text-body-1"}, "text": f"总入库量：{grid_data['total_count']}"}
+                    {"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "10px", "fontWeight": 500, "color": "#111111"}}, "text": f"总入库量：{grid_data['total_count']}"}
                 ],
             },
             {
                 "component": "VCol",
                 "props": {"cols": 12, "md": metric_md},
                 "content": [
-                    {"component": "div", "props": {"class": "text-body-1"}, "text": f"活跃天数：{grid_data['active_days']}"}
+                    {"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "10px", "fontWeight": 500, "color": "#111111"}}, "text": f"活跃天数：{grid_data['active_days']}"}
                 ],
             },
             {
                 "component": "VCol",
                 "props": {"cols": 12, "md": metric_md},
                 "content": [
-                    {"component": "div", "props": {"class": "text-body-1"}, "text": f"峰值单日：{grid_data['max_count']}"}
+                    {"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "10px", "fontWeight": 500, "color": "#111111"}}, "text": f"峰值单日：{grid_data['max_count']}"}
                 ],
             }
         ]
@@ -849,7 +911,7 @@ class MediaCalendar(_PluginBase):
                 "component": "VCol",
                 "props": {"cols": 12, "md": 3},
                 "content": [
-                    {"component": "div", "props": {"class": "text-body-1"}, "text": f"统计区间：{grid_data['date_range']}"}
+                    {"component": "div", "props": {"class": "text-body-1", "style": {"fontSize": "10px", "fontWeight": 500, "color": "#111111"}}, "text": f"统计区间：{grid_data['date_range']}"}
                 ],
             })
 
@@ -900,7 +962,14 @@ class MediaCalendar(_PluginBase):
         ]
         main_calendar = {
             "component": "div",
-            "props": {"style": {"overflowX": "auto"}},
+            "props": {
+                "class": "d-flex",
+                "style": {
+                    "overflowX": "auto",
+                    "marginTop": "-6px",
+                    "justifyContent": "flex-start" if self._calendar_align == "left" else ("center" if self._calendar_align == "center" else "flex-end")
+                }
+            },
             "content": [{
                 "component": "div",
                 "props": {"style": {"minWidth": f"{calendar_width + weekday_col_width + 8}px"}},
@@ -959,7 +1028,7 @@ class MediaCalendar(_PluginBase):
                         {"min": 0, "max": 100, "title": {"text": "CPU %"}},
                         {"opposite": True, "title": {"text": "内存 MB"}},
                     ],
-                    "colors": ["#9155FD", "#16B1FF"],
+                    "colors": [self._performance_cpu_color, self._performance_memory_color],
                     "legend": {"show": False},
                     "dataLabels": {"enabled": False},
                     "tooltip": {"shared": True, "intersect": False},
@@ -994,9 +1063,9 @@ class MediaCalendar(_PluginBase):
                     },
                     "content": [
                         {"component": "span", "text": "CPU"},
-                        {"component": "div", "props": {"style": {"width": "10px", "height": "10px", "borderRadius": "2px", "backgroundColor": "#9155FD"}}},
+                        {"component": "div", "props": {"style": {"width": "10px", "height": "10px", "borderRadius": "2px", "backgroundColor": self._performance_cpu_color}}},
                         {"component": "span", "text": "内存"},
-                        {"component": "div", "props": {"style": {"width": "10px", "height": "10px", "borderRadius": "2px", "backgroundColor": "#16B1FF"}}}
+                        {"component": "div", "props": {"style": {"width": "10px", "height": "10px", "borderRadius": "2px", "backgroundColor": self._performance_memory_color}}}
                     ]
                 }
             ]
