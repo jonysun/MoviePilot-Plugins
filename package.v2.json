@@ -59,13 +59,14 @@
         "name": "仪表板增强",
         "description": "在仪表盘增加媒体日历热点图等功能。",
         "labels": "系统",
-        "version": "1.0.3",
+        "version": "1.0.5",
         "icon": "statistic.png",
         "author": "jonysun",
         "level": 1,
         "history": {
             "v1.0.1": "测试",
-            "v1.0.3": "修复bug"
+            "v1.0.3": "修复bug",
+            "v1.0.5": "增加组件高度设置"
         }
     }
 }

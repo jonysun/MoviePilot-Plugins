@@ -14,7 +14,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库日历、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.0.3"
+    plugin_version = "1.0.5"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -53,6 +53,7 @@ class DashboardPlus(_PluginBase):
     _site_stat_refresh: int = 300
     _site_stat_show_overview: bool = True
     _site_stat_show_logo: bool = True
+    _site_stat_component_max_height: int = 420
     _site_stat_max_height: int = 460
 
     # storage + media compact settings
@@ -162,6 +163,11 @@ class DashboardPlus(_PluginBase):
         self._site_stat_refresh = self.__safe_refresh(config.get("site_stat_refresh", 300), 10, 3600)
         self._site_stat_show_overview = self.__to_bool(config.get("site_stat_show_overview", True), default=True)
         self._site_stat_show_logo = self.__to_bool(config.get("site_stat_show_logo", True), default=True)
+        self._site_stat_component_max_height = self.__safe_refresh(
+            config.get("site_stat_component_max_height", 420),
+            240,
+            1200
+        )
         self._site_stat_max_height = self.__safe_refresh(config.get("site_stat_max_height", 460), 300, 900)
 
         self._storage_media_refresh = self.__safe_refresh(config.get("storage_media_refresh", 300), 10, 3600)
@@ -432,7 +438,8 @@ class DashboardPlus(_PluginBase):
                                 }, {
                                     "component": "VRow",
                                     "content": [
-                                        {"component": "VCol", "props": {"cols": 12, "md": 4}, "content": [{"component": "VTextField", "props": {"model": "site_stat_max_height", "label": "站点列表可视高度", "type": "number", "min": 300, "max": 900, "placeholder": "460"}}]}
+                                        {"component": "VCol", "props": {"cols": 12, "md": 4}, "content": [{"component": "VTextField", "props": {"model": "site_stat_component_max_height", "label": "组件自身最大高度", "type": "number", "min": 240, "max": 1200, "placeholder": "420"}}]},
+                                        {"component": "VCol", "props": {"cols": 12, "md": 4}, "content": [{"component": "VTextField", "props": {"model": "site_stat_max_height", "label": "组件内可视高度", "type": "number", "min": 300, "max": 900, "placeholder": "460"}}]}
                                     ]
                                 }]
                             }
@@ -493,6 +500,7 @@ class DashboardPlus(_PluginBase):
             "site_stat_refresh": self._site_stat_refresh,
             "site_stat_show_overview": self._site_stat_show_overview,
             "site_stat_show_logo": self._site_stat_show_logo,
+            "site_stat_component_max_height": self._site_stat_component_max_height,
             "site_stat_max_height": self._site_stat_max_height,
             "storage_media_refresh": self._storage_media_refresh,
             "summary_spacing": self._summary_spacing,
@@ -1057,6 +1065,11 @@ class DashboardPlus(_PluginBase):
         if self._site_stat_show_overview:
             elements.append(overview)
 
+        header_height = 54
+        overview_height = 96 if self._site_stat_show_overview else 0
+        available_list_height = max(120, self._site_stat_component_max_height - header_height - overview_height)
+        list_visible_height = min(self._site_stat_max_height, available_list_height)
+
         table_header = [
             {"component": "VDivider"},
             {"component": "VRow", "props": {"class": "px-2 py-1", "noGutters": True}, "content": [
@@ -1070,7 +1083,7 @@ class DashboardPlus(_PluginBase):
             "component": "div",
             "props": {
                 "style": {
-                    "maxHeight": f"{self._site_stat_max_height}px",
+                    "maxHeight": f"{self._site_stat_component_max_height}px",
                     "overflow": "hidden"
                 }
             },
@@ -1080,7 +1093,7 @@ class DashboardPlus(_PluginBase):
                     "component": "div",
                     "props": {
                         "style": {
-                            "maxHeight": f"{max(120, self._site_stat_max_height - 54)}px",
+                            "maxHeight": f"{list_visible_height}px",
                             "overflowY": "auto"
                         }
                     },
