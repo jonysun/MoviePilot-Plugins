@@ -14,7 +14,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.0.5"
+    plugin_version = "1.0.7"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -32,6 +32,7 @@ class DashboardPlus(_PluginBase):
     _calendar_align: str = "left"
     _calendar_size: str = "two_third"
     _calendar_auto_stretch: bool = False
+    _calendar_stretch_mode: str = "equal"
     _cell_scale: int = 110
     _cell_gap: int = 2
     _cell_radius: float = 4.0
@@ -117,6 +118,9 @@ class DashboardPlus(_PluginBase):
         if self._calendar_align not in {"left", "center", "right"}:
             self._calendar_align = "left"
         self._calendar_auto_stretch = self.__to_bool(config.get("calendar_auto_stretch", False), default=False)
+        self._calendar_stretch_mode = str(config.get("calendar_stretch_mode", "equal") or "equal")
+        if self._calendar_stretch_mode not in {"equal", "fill"}:
+            self._calendar_stretch_mode = "equal"
 
         dashboard_size = config.get("dashboard_size", "two_third")
         self._calendar_size = config.get("calendar_size", dashboard_size)
@@ -372,6 +376,21 @@ class DashboardPlus(_PluginBase):
                                                          ]
                                                      }
                                                  }]
+                                            },
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 3},
+                                                "content": [{
+                                                    "component": "VSelect",
+                                                    "props": {
+                                                        "model": "calendar_stretch_mode",
+                                                        "label": "拉伸模式",
+                                                        "items": [
+                                                            {"title": "等比方格（推荐）", "value": "equal"},
+                                                            {"title": "完全填充", "value": "fill"}
+                                                        ]
+                                                    }
+                                                }]
                                             }
                                         ]
                                     },
@@ -518,6 +537,7 @@ class DashboardPlus(_PluginBase):
             "show_month_labels": self._show_month_labels,
             "calendar_align": self._calendar_align,
             "calendar_auto_stretch": self._calendar_auto_stretch,
+            "calendar_stretch_mode": self._calendar_stretch_mode,
             "dashboard_size": self._calendar_size,
             "calendar_size": self._calendar_size,
             "performance_size": self._performance_size,
@@ -817,9 +837,10 @@ class DashboardPlus(_PluginBase):
         weekday_col_base = 30 if self._label_style == "english_abbr" else 22
         weekday_col_width = max(20, int(round(weekday_col_base * scale_ratio)))
         auto_cell_width = f"calc((100% - {weekday_col_width}px - {max(0, (week_count - 1) * cell_gap)}px) / {max(1, week_count)})"
+        auto_cell_height = auto_cell_width if self._calendar_stretch_mode == "fill" else f"{cell_size}px"
         calendar_width = week_count * (cell_size + cell_gap)
         cell_width_value = auto_cell_width if self._calendar_auto_stretch else f"{cell_size}px"
-        cell_height_value = auto_cell_width if self._calendar_auto_stretch else f"{cell_size}px"
+        cell_height_value = auto_cell_height if self._calendar_auto_stretch else f"{cell_size}px"
         radius = f"{self._cell_radius:.1f}px"
 
         label_cells = []
@@ -1087,7 +1108,7 @@ class DashboardPlus(_PluginBase):
                                                 "props": {"class": "d-flex align-center", "style": {"gap": "6px"}},
                                                 "content": [
                                                     {"component": "span", "props": {"class": "text-body-2 font-weight-medium"}, "text": site.name or site.domain or "-"},
-                                                    {"component": "span", "props": {"class": f"text-{status_color[status]}"}, "text": f"连接{status_label[status]}"}
+                                                    {"component": "span", "props": {"class": f"text-caption text-{status_color[status]}", "style": {"lineHeight": "1.2"}}, "text": f"连接{status_label[status]}"}
                                                 ]
                                             },
                                             {"component": "div", "props": {"class": "text-caption"}, "text": site.domain or "-"}
@@ -1146,7 +1167,6 @@ class DashboardPlus(_PluginBase):
         available_list_height = max(120, self._site_stat_component_max_height - header_height - overview_height)
         list_visible_height = min(self._site_stat_max_height, available_list_height)
 
-        table_header = [{"component": "VDivider"}]
         rows_content = rows if rows else [{"component": "VAlert", "props": {"type": "info", "variant": "tonal", "density": "compact"}, "text": "暂无站点统计数据"}]
         elements.append({
             "component": "div",
@@ -1157,11 +1177,11 @@ class DashboardPlus(_PluginBase):
                 }
             },
             "content": [
-                {"component": "div", "content": table_header},
                 {
                     "component": "div",
                     "props": {
                         "style": {
+                            "borderTop": "1px solid rgba(var(--v-border-color), 0.28)",
                             "maxHeight": f"{list_visible_height}px",
                             "overflowY": "auto"
                         }
@@ -1259,7 +1279,7 @@ class DashboardPlus(_PluginBase):
                                         "props": {"cols": 3, "class": "py-2 pe-1"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
-                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[0][3]}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[0][2], "size": 24}}]},
+                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[0][3]}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[0][2], "size": 24, "color": "white"}}]},
                                                 {"component": "div", "content": [
                                                     {"component": "div", "props": {"class": "text-caption"}, "text": compact_media_items[0][0]},
                                                     {"component": "div", "props": {"class": "text-h6"}, "text": compact_media_items[0][1]},
@@ -1272,7 +1292,7 @@ class DashboardPlus(_PluginBase):
                                         "props": {"cols": 3, "class": "py-2 pe-1"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
-                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[1][3]}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[1][2], "size": 24}}]},
+                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[1][3]}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[1][2], "size": 24, "color": "white"}}]},
                                                 {"component": "div", "content": [
                                                     {"component": "div", "props": {"class": "text-caption"}, "text": compact_media_items[1][0]},
                                                     {"component": "div", "props": {"class": "text-h6"}, "text": compact_media_items[1][1]},
@@ -1285,7 +1305,7 @@ class DashboardPlus(_PluginBase):
                                         "props": {"cols": 3, "class": "py-2 pe-1"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
-                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[2][3]}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[2][2], "size": 24}}]},
+                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[2][3]}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[2][2], "size": 24, "color": "white"}}]},
                                                 {"component": "div", "content": [
                                                     {"component": "div", "props": {"class": "text-caption"}, "text": compact_media_items[2][0]},
                                                     {"component": "div", "props": {"class": "text-h6"}, "text": compact_media_items[2][1]},
@@ -1298,7 +1318,7 @@ class DashboardPlus(_PluginBase):
                                         "props": {"cols": 3, "class": "py-2"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
-                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[3][3]}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[3][2], "size": 24}}]},
+                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[3][3]}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[3][2], "size": 24, "color": "white"}}]},
                                                 {"component": "div", "content": [
                                                     {"component": "div", "props": {"class": "text-caption"}, "text": compact_media_items[3][0]},
                                                     {"component": "div", "props": {"class": "text-h6"}, "text": compact_media_items[3][1]},
