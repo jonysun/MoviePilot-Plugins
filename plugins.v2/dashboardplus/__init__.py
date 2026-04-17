@@ -14,7 +14,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.0.7"
+    plugin_version = "1.0.8"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -33,6 +33,7 @@ class DashboardPlus(_PluginBase):
     _calendar_size: str = "two_third"
     _calendar_auto_stretch: bool = False
     _calendar_stretch_mode: str = "equal"
+    _calendar_min_cell_width: int = 8
     _cell_scale: int = 110
     _cell_gap: int = 2
     _cell_radius: float = 4.0
@@ -121,6 +122,7 @@ class DashboardPlus(_PluginBase):
         self._calendar_stretch_mode = str(config.get("calendar_stretch_mode", "equal") or "equal")
         if self._calendar_stretch_mode not in {"equal", "fill"}:
             self._calendar_stretch_mode = "equal"
+        self._calendar_min_cell_width = self.__safe_refresh(config.get("calendar_min_cell_width", 8), 6, 24)
 
         dashboard_size = config.get("dashboard_size", "two_third")
         self._calendar_size = config.get("calendar_size", dashboard_size)
@@ -381,6 +383,21 @@ class DashboardPlus(_PluginBase):
                                                 "component": "VCol",
                                                 "props": {"cols": 12, "md": 3},
                                                 "content": [{
+                                                    "component": "VTextField",
+                                                    "props": {
+                                                        "model": "calendar_min_cell_width",
+                                                        "label": "自动拉伸最小格宽（6-24）",
+                                                        "type": "number",
+                                                        "min": 6,
+                                                        "max": 24,
+                                                        "placeholder": "8"
+                                                    }
+                                                }]
+                                            },
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 3},
+                                                "content": [{
                                                     "component": "VSelect",
                                                     "props": {
                                                         "model": "calendar_stretch_mode",
@@ -538,6 +555,7 @@ class DashboardPlus(_PluginBase):
             "calendar_align": self._calendar_align,
             "calendar_auto_stretch": self._calendar_auto_stretch,
             "calendar_stretch_mode": self._calendar_stretch_mode,
+            "calendar_min_cell_width": self._calendar_min_cell_width,
             "dashboard_size": self._calendar_size,
             "calendar_size": self._calendar_size,
             "performance_size": self._performance_size,
@@ -836,8 +854,9 @@ class DashboardPlus(_PluginBase):
         row_gap = max(1, int(round(1 * scale_ratio)))
         weekday_col_base = 30 if self._label_style == "english_abbr" else 22
         weekday_col_width = max(20, int(round(weekday_col_base * scale_ratio)))
-        auto_cell_width = f"calc((100% - {weekday_col_width}px - {max(0, (week_count - 1) * cell_gap)}px) / {max(1, week_count)})"
-        auto_cell_height = auto_cell_width if self._calendar_stretch_mode == "fill" else f"{cell_size}px"
+        auto_cell_width = "0"
+        auto_cell_flex = f"1 1 {self._calendar_min_cell_width}px"
+        auto_cell_height = f"{cell_size}px"
         calendar_width = week_count * (cell_size + cell_gap)
         cell_width_value = auto_cell_width if self._calendar_auto_stretch else f"{cell_size}px"
         cell_height_value = auto_cell_height if self._calendar_auto_stretch else f"{cell_size}px"
@@ -847,7 +866,7 @@ class DashboardPlus(_PluginBase):
         if self._show_month_labels:
             for week_index in range(week_count):
                 label_cells.append({"component": "div", "props": {"style": {
-                    "width": cell_width_value, "minWidth": "0" if self._calendar_auto_stretch else f"{cell_size}px", "height": "14px", "fontSize": "10px",
+                    "width": cell_width_value, "flex": auto_cell_flex if self._calendar_auto_stretch else "none", "minWidth": f"{self._calendar_min_cell_width}px" if self._calendar_auto_stretch else f"{cell_size}px", "height": "14px", "fontSize": "10px",
                     "lineHeight": "14px", "color": "rgba(var(--v-theme-on-surface), 0.65)",
                     "marginRight": f"{cell_gap}px", "overflow": "visible", "whiteSpace": "nowrap"}},
                     "text": month_labels.get(week_index, "")})
@@ -860,7 +879,7 @@ class DashboardPlus(_PluginBase):
             for week_index in range(week_count):
                 cell = weeks[week_index][weekday]
                 row_cells.append({"component": "div", "props": {"title": cell["tooltip"] if cell["in_range"] else "", "style": {
-                    "width": cell_width_value, "minWidth": "0" if self._calendar_auto_stretch else f"{cell_size}px", "height": cell_height_value,
+                    "width": cell_width_value, "flex": auto_cell_flex if self._calendar_auto_stretch else "none", "minWidth": f"{self._calendar_min_cell_width}px" if self._calendar_auto_stretch else f"{cell_size}px", "height": cell_height_value,
                     "borderRadius": radius, "backgroundColor": theme_colors[cell["level"]],
                     "marginRight": f"{cell_gap}px", "opacity": 1 if cell["in_range"] else 0, "cursor": "default"}}})
 
@@ -870,7 +889,7 @@ class DashboardPlus(_PluginBase):
                 "paddingRight": "4px", "color": "rgba(var(--v-theme-on-surface), 0.65)", "whiteSpace": "nowrap"}},
                 "text": weekday_labels[weekday]})
 
-            day_row_elements.append({"component": "div", "props": {"class": "d-flex align-center", "style": {"marginBottom": f"{row_gap}px"}}, "content": row_cells})
+            day_row_elements.append({"component": "div", "props": {"class": "d-flex align-center", "style": {"marginBottom": f"{row_gap}px", "width": "100%" if self._calendar_auto_stretch else "auto"}}, "content": row_cells})
 
         legend = {"component": "div", "props": {"class": "d-flex align-center justify-end", "style": {
             "marginTop": "2px", "gap": "4px", "fontSize": "11px", "color": "rgba(var(--v-theme-on-surface), 0.65)"}},
@@ -895,9 +914,9 @@ class DashboardPlus(_PluginBase):
             "props": {"class": "d-flex align-center", "style": {"marginBottom": "1px"}},
             "content": [
                 {"component": "div", "props": {"style": {"width": f"{weekday_col_width}px", "minWidth": f"{weekday_col_width}px"}}},
-                {"component": "div", "props": {"class": "d-flex align-center"}, "content": label_cells},
+                {"component": "div", "props": {"class": "d-flex align-center", "style": {"flex": "1 1 0", "minWidth": "0"} if self._calendar_auto_stretch else {}}, "content": label_cells},
             ],
-        } if self._show_month_labels else {"component": "div"}, {"component": "div", "props": {"class": "d-flex"}, "content": [{"component": "div", "content": weekday_label_elements}, {"component": "div", "content": day_row_elements}]}]
+        } if self._show_month_labels else {"component": "div"}, {"component": "div", "props": {"class": "d-flex"}, "content": [{"component": "div", "content": weekday_label_elements}, {"component": "div", "props": {"style": {"flex": "1 1 0", "minWidth": "0"} if self._calendar_auto_stretch else {}}, "content": day_row_elements}]}]
 
         main_calendar = {
             "component": "div",
@@ -1279,7 +1298,7 @@ class DashboardPlus(_PluginBase):
                                         "props": {"cols": 3, "class": "py-2 pe-1"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
-                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[0][3]}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[0][2], "size": 24, "color": "white"}}]},
+                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[0][3]}, "content": [{"component": "VIcon", "props": {"size": 24, "color": "white"}, "text": compact_media_items[0][2]}]},
                                                 {"component": "div", "content": [
                                                     {"component": "div", "props": {"class": "text-caption"}, "text": compact_media_items[0][0]},
                                                     {"component": "div", "props": {"class": "text-h6"}, "text": compact_media_items[0][1]},
@@ -1292,7 +1311,7 @@ class DashboardPlus(_PluginBase):
                                         "props": {"cols": 3, "class": "py-2 pe-1"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
-                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[1][3]}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[1][2], "size": 24, "color": "white"}}]},
+                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[1][3]}, "content": [{"component": "VIcon", "props": {"size": 24, "color": "white"}, "text": compact_media_items[1][2]}]},
                                                 {"component": "div", "content": [
                                                     {"component": "div", "props": {"class": "text-caption"}, "text": compact_media_items[1][0]},
                                                     {"component": "div", "props": {"class": "text-h6"}, "text": compact_media_items[1][1]},
@@ -1305,7 +1324,7 @@ class DashboardPlus(_PluginBase):
                                         "props": {"cols": 3, "class": "py-2 pe-1"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
-                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[2][3]}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[2][2], "size": 24, "color": "white"}}]},
+                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[2][3]}, "content": [{"component": "VIcon", "props": {"size": 24, "color": "white"}, "text": compact_media_items[2][2]}]},
                                                 {"component": "div", "content": [
                                                     {"component": "div", "props": {"class": "text-caption"}, "text": compact_media_items[2][0]},
                                                     {"component": "div", "props": {"class": "text-h6"}, "text": compact_media_items[2][1]},
@@ -1318,7 +1337,7 @@ class DashboardPlus(_PluginBase):
                                         "props": {"cols": 3, "class": "py-2"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
-                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[3][3]}, "content": [{"component": "VIcon", "props": {"icon": compact_media_items[3][2], "size": 24, "color": "white"}}]},
+                                                {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[3][3]}, "content": [{"component": "VIcon", "props": {"size": 24, "color": "white"}, "text": compact_media_items[3][2]}]},
                                                 {"component": "div", "content": [
                                                     {"component": "div", "props": {"class": "text-caption"}, "text": compact_media_items[3][0]},
                                                     {"component": "div", "props": {"class": "text-h6"}, "text": compact_media_items[3][1]},
