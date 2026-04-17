@@ -14,7 +14,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.0.8"
+    plugin_version = "1.1.0"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -34,6 +34,7 @@ class DashboardPlus(_PluginBase):
     _calendar_auto_stretch: bool = False
     _calendar_stretch_mode: str = "equal"
     _calendar_min_cell_width: int = 8
+    _calendar_stretch_row_height: int = 12
     _cell_scale: int = 110
     _cell_gap: int = 2
     _cell_radius: float = 4.0
@@ -57,12 +58,14 @@ class DashboardPlus(_PluginBase):
     _site_stat_refresh: int = 300
     _site_stat_show_overview: bool = True
     _site_stat_show_logo: bool = True
+    _site_stat_only_anomaly: bool = False
     _site_stat_component_max_height: int = 420
     _site_stat_max_height: int = 460
 
     # storage + media compact settings
     _storage_media_size: str = "half"
     _storage_media_refresh: int = 300
+    _storage_media_height: int = 250
 
     _summary_spacing: int = 8
 
@@ -123,6 +126,7 @@ class DashboardPlus(_PluginBase):
         if self._calendar_stretch_mode not in {"equal", "fill"}:
             self._calendar_stretch_mode = "equal"
         self._calendar_min_cell_width = self.__safe_refresh(config.get("calendar_min_cell_width", 8), 6, 24)
+        self._calendar_stretch_row_height = self.__safe_refresh(config.get("calendar_stretch_row_height", 8), 8, 24)
 
         dashboard_size = config.get("dashboard_size", "two_third")
         self._calendar_size = config.get("calendar_size", dashboard_size)
@@ -178,6 +182,7 @@ class DashboardPlus(_PluginBase):
         self._site_stat_refresh = self.__safe_refresh(config.get("site_stat_refresh", 300), 10, 3600)
         self._site_stat_show_overview = self.__to_bool(config.get("site_stat_show_overview", True), default=True)
         self._site_stat_show_logo = self.__to_bool(config.get("site_stat_show_logo", True), default=True)
+        self._site_stat_only_anomaly = self.__to_bool(config.get("site_stat_only_anomaly", False), default=False)
         self._site_stat_component_max_height = self.__safe_refresh(
             config.get("site_stat_component_max_height", 420),
             240,
@@ -186,6 +191,7 @@ class DashboardPlus(_PluginBase):
         self._site_stat_max_height = self.__safe_refresh(config.get("site_stat_max_height", 460), 300, 900)
 
         self._storage_media_refresh = self.__safe_refresh(config.get("storage_media_refresh", 300), 10, 3600)
+        self._storage_media_height = self.__safe_refresh(config.get("storage_media_height", 250), 180, 420)
         self._summary_spacing = self.__safe_refresh(config.get("summary_spacing", 8), 0, 40)
 
     def get_state(self) -> bool:
@@ -207,13 +213,8 @@ class DashboardPlus(_PluginBase):
                 "content": [
                     {
                         "component": "VCol",
-                        "props": {"cols": 12, "md": 6},
+                        "props": {"cols": 12},
                         "content": [{"component": "VSwitch", "props": {"model": "enabled", "label": "启用插件"}}]
-                    },
-                    {
-                        "component": "VCol",
-                        "props": {"cols": 12, "md": 6},
-                        "content": [{"component": "VAlert", "props": {"type": "info", "variant": "tonal", "density": "compact"}, "text": "“显示摘要信息”用于控制热力图下方统计行（总入库量/活跃天数/峰值单日）显示与否。"}]
                     }
                 ]
             },
@@ -398,6 +399,21 @@ class DashboardPlus(_PluginBase):
                                                 "component": "VCol",
                                                 "props": {"cols": 12, "md": 3},
                                                 "content": [{
+                                                    "component": "VTextField",
+                                                    "props": {
+                                                        "model": "summary_spacing",
+                                                        "label": "热力统计行上边距（0-40）",
+                                                        "type": "number",
+                                                        "min": 0,
+                                                        "max": 40,
+                                                        "placeholder": "8"
+                                                    }
+                                                }]
+                                            },
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 3},
+                                                "content": [{
                                                     "component": "VSelect",
                                                     "props": {
                                                         "model": "calendar_stretch_mode",
@@ -408,27 +424,27 @@ class DashboardPlus(_PluginBase):
                                                         ]
                                                     }
                                                 }]
+                                            },
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 3},
+                                                "content": [{
+                                                    "component": "VTextField",
+                                                    "props": {
+                                                        "model": "calendar_stretch_row_height",
+                                                        "label": "拉伸行高（8-24）",
+                                                        "type": "number",
+                                                        "min": 8,
+                                                        "max": 24,
+                                                        "placeholder": "12"
+                                                    }
+                                                }]
                                             }
                                         ]
                                     },
-                                     {
-                                         "component": "VRow",
-                                         "content": [
-                                             {
-                                                 "component": "VCol",
-                                                 "props": {"cols": 12, "md": 3},
-                                                 "content": [{
-                                                     "component": "VTextField",
-                                                     "props": {
-                                                         "model": "summary_spacing",
-                                                         "label": "热力统计行上边距（0-40）",
-                                                         "type": "number",
-                                                         "min": 0,
-                                                         "max": 40,
-                                                         "placeholder": "8"
-                                                     }
-                                                 }]
-                                             },
+                                    {
+                                        "component": "VRow",
+                                        "content": [
                                              {
                                                  "component": "VCol",
                                                  "props": {"cols": 12, "md": 3},
@@ -461,16 +477,30 @@ class DashboardPlus(_PluginBase):
                                                      "props": {"model": "show_date_range", "label": "显示统计区间"}
                                                  }]
                                              },
-                                             {
-                                                 "component": "VCol",
-                                                 "props": {"cols": 12, "md": 3},
-                                                 "content": [{
-                                                     "component": "VSwitch",
-                                                     "props": {"model": "show_summary", "label": "显示摘要信息"}
-                                                 }]
-                                             }
-                                         ]
-                                     }
+                                              {
+                                                  "component": "VCol",
+                                                  "props": {"cols": 12, "md": 3},
+                                                  "content": [{
+                                                      "component": "VSwitch",
+                                                      "props": {"model": "show_summary", "label": "显示摘要信息"}
+                                                  }]
+                                              }
+                                        ]
+                                    },
+                                    {
+                                        "component": "VRow",
+                                        "content": [
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12},
+                                                "content": [{
+                                                    "component": "VAlert",
+                                                    "props": {"type": "info", "variant": "tonal", "density": "compact"},
+                                                    "text": "“显示摘要信息”用于控制热力图下方统计行（总入库量/活跃天数/峰值单日）显示与否。"
+                                                }]
+                                            }
+                                        ]
+                                    }
                                 ]
                             }
                         ]
@@ -516,7 +546,8 @@ class DashboardPlus(_PluginBase):
                                     "component": "VRow",
                                     "content": [
                                         {"component": "VCol", "props": {"cols": 12, "md": 4}, "content": [{"component": "VSwitch", "props": {"model": "site_stat_show_overview", "label": "显示统计概览"}}]},
-                                        {"component": "VCol", "props": {"cols": 12, "md": 4}, "content": [{"component": "VSwitch", "props": {"model": "site_stat_show_logo", "label": "显示站点Logo"}}]}
+                                        {"component": "VCol", "props": {"cols": 12, "md": 4}, "content": [{"component": "VSwitch", "props": {"model": "site_stat_show_logo", "label": "显示站点Logo"}}]},
+                                        {"component": "VCol", "props": {"cols": 12, "md": 4}, "content": [{"component": "VSwitch", "props": {"model": "site_stat_only_anomaly", "label": "仅显示异常站点"}}]}
                                     ]
                                 }]
                             }
@@ -532,7 +563,8 @@ class DashboardPlus(_PluginBase):
                                     "component": "VRow",
                                     "content": [
                                         {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VSelect", "props": {"model": "storage_media_size", "label": "组件宽度", "items": [{"title": "1/3（33%）", "value": "one_third"}, {"title": "1/2（50%）", "value": "half"}, {"title": "2/3（66%）", "value": "two_third"}, {"title": "全宽（100%）", "value": "full"}]}}]},
-                                        {"component": "VCol", "props": {"cols": 12, "md": 6}, "content": [{"component": "VTextField", "props": {"model": "storage_media_refresh", "label": "刷新间隔（秒）", "type": "number", "min": 10, "max": 3600, "placeholder": "300"}}]}
+                                        {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VTextField", "props": {"model": "storage_media_refresh", "label": "刷新间隔（秒）", "type": "number", "min": 10, "max": 3600, "placeholder": "300"}}]},
+                                        {"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "VTextField", "props": {"model": "storage_media_height", "label": "组件高度（180-420）", "type": "number", "min": 180, "max": 420, "placeholder": "250"}}]}
                                     ]
                                 }]
                             }
@@ -556,6 +588,7 @@ class DashboardPlus(_PluginBase):
             "calendar_auto_stretch": self._calendar_auto_stretch,
             "calendar_stretch_mode": self._calendar_stretch_mode,
             "calendar_min_cell_width": self._calendar_min_cell_width,
+            "calendar_stretch_row_height": self._calendar_stretch_row_height,
             "dashboard_size": self._calendar_size,
             "calendar_size": self._calendar_size,
             "performance_size": self._performance_size,
@@ -576,9 +609,11 @@ class DashboardPlus(_PluginBase):
             "site_stat_refresh": self._site_stat_refresh,
             "site_stat_show_overview": self._site_stat_show_overview,
             "site_stat_show_logo": self._site_stat_show_logo,
+            "site_stat_only_anomaly": self._site_stat_only_anomaly,
             "site_stat_component_max_height": self._site_stat_component_max_height,
             "site_stat_max_height": self._site_stat_max_height,
             "storage_media_refresh": self._storage_media_refresh,
+            "storage_media_height": self._storage_media_height,
             "summary_spacing": self._summary_spacing,
         }
 
@@ -856,10 +891,10 @@ class DashboardPlus(_PluginBase):
         weekday_col_width = max(20, int(round(weekday_col_base * scale_ratio)))
         auto_cell_width = "0"
         auto_cell_flex = f"1 1 {self._calendar_min_cell_width}px"
-        auto_cell_height = f"{cell_size}px"
+        auto_cell_height = f"{self._calendar_stretch_row_height}px" if self._calendar_stretch_mode == "fill" else ""
         calendar_width = week_count * (cell_size + cell_gap)
         cell_width_value = auto_cell_width if self._calendar_auto_stretch else f"{cell_size}px"
-        cell_height_value = auto_cell_height if self._calendar_auto_stretch else f"{cell_size}px"
+        cell_height_value = auto_cell_height if (self._calendar_auto_stretch and self._calendar_stretch_mode == "fill") else f"{cell_size}px"
         radius = f"{self._cell_radius:.1f}px"
 
         label_cells = []
@@ -906,7 +941,7 @@ class DashboardPlus(_PluginBase):
         if self._show_date_range:
             stats_content.append({"component": "VCol", "props": {"cols": 12, "md": 3}, "content": [{"component": "div", "props": {"style": {"fontSize": "11px", "lineHeight": "1.2", "color": "rgba(var(--v-theme-on-surface), 0.65)"}}, "text": f"统计区间：{grid_data['date_range']}"}]})
 
-        stats_row = {"component": "VRow", "props": {"class": "mt-0", "noGutters": True, "style": {"marginTop": f"{self._summary_spacing}px", "marginBottom": "0"}}, "content": stats_content}
+        stats_row = {"component": "VRow", "props": {"class": "mt-0", "noGutters": True, "style": {"marginTop": f"{max(0, self._summary_spacing)}px", "marginBottom": "0"}}, "content": stats_content}
         legend_row = {"component": "VRow", "props": {"class": "mt-0", "noGutters": True, "style": {"marginTop": "2px", "marginBottom": "0"}}, "content": [{"component": "VCol", "props": {"cols": 12}, "content": [legend]}]}
 
         main_calendar_content = [{
@@ -1082,6 +1117,9 @@ class DashboardPlus(_PluginBase):
                 failed += 1
             else:
                 unknown += 1
+
+            if self._site_stat_only_anomaly and status not in {"slow", "failed"}:
+                continue
 
             success = int(st.success or 0) if st else 0
             fail = int(st.fail or 0) if st else 0
@@ -1263,7 +1301,7 @@ class DashboardPlus(_PluginBase):
                 "content": [
                     {
                         "component": "div",
-                        "props": {"class": "pb-2", "style": {"position": "relative", "overflow": "hidden", "borderRadius": "8px", "padding": "8px", "backgroundColor": "rgba(var(--v-theme-surface), 1)"}},
+                        "props": {"class": "pb-1", "style": {"position": "relative", "overflow": "hidden", "borderRadius": "8px", "padding": "6px 8px", "backgroundColor": "rgba(var(--v-theme-surface), 1)", "maxHeight": f"{self._storage_media_height}px"}},
                         "content": [
                             {
                                 "component": "div",
@@ -1284,18 +1322,18 @@ class DashboardPlus(_PluginBase):
                             {"component": "VProgressLinear", "props": {"modelValue": used_percent, "color": "primary", "height": 8, "rounded": True}}
                         ]
                     },
-                    {"component": "VDivider", "props": {"class": "my-2"}},
+                    {"component": "VDivider", "props": {"class": "my-1"}},
                     {
                         "component": "div",
                         "content": [
-                            {"component": "div", "props": {"class": "text-subtitle-1 font-weight-medium pb-2"}, "text": "媒体统计"},
+                            {"component": "div", "props": {"class": "text-subtitle-1 font-weight-medium pb-1"}, "text": "媒体统计"},
                             {
                                 "component": "VRow",
                                 "props": {"noGutters": True},
                                 "content": [
                                     {
                                         "component": "VCol",
-                                        "props": {"cols": 3, "class": "py-2 pe-1"},
+                                        "props": {"cols": 3, "class": "py-1 pe-1"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
                                                 {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[0][3]}, "content": [{"component": "VIcon", "props": {"size": 24, "color": "white"}, "text": compact_media_items[0][2]}]},
@@ -1308,7 +1346,7 @@ class DashboardPlus(_PluginBase):
                                     },
                                     {
                                         "component": "VCol",
-                                        "props": {"cols": 3, "class": "py-2 pe-1"},
+                                        "props": {"cols": 3, "class": "py-1 pe-1"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
                                                 {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[1][3]}, "content": [{"component": "VIcon", "props": {"size": 24, "color": "white"}, "text": compact_media_items[1][2]}]},
@@ -1321,7 +1359,7 @@ class DashboardPlus(_PluginBase):
                                     },
                                     {
                                         "component": "VCol",
-                                        "props": {"cols": 3, "class": "py-2 pe-1"},
+                                        "props": {"cols": 3, "class": "py-1 pe-1"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
                                                 {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[2][3]}, "content": [{"component": "VIcon", "props": {"size": 24, "color": "white"}, "text": compact_media_items[2][2]}]},
@@ -1334,7 +1372,7 @@ class DashboardPlus(_PluginBase):
                                     },
                                     {
                                         "component": "VCol",
-                                        "props": {"cols": 3, "class": "py-2"},
+                                        "props": {"cols": 3, "class": "py-1"},
                                         "content": [
                                             {"component": "div", "props": {"class": "d-flex align-center"}, "content": [
                                                 {"component": "VAvatar", "props": {"size": 42, "class": "me-2 elevation-1", "rounded": "sm", "color": compact_media_items[3][3]}, "content": [{"component": "VIcon", "props": {"size": 24, "color": "white"}, "text": compact_media_items[3][2]}]},
