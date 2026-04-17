@@ -14,7 +14,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.1.1"
+    plugin_version = "1.1.2"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -192,7 +192,7 @@ class DashboardPlus(_PluginBase):
 
         self._storage_media_refresh = self.__safe_refresh(config.get("storage_media_refresh", 300), 10, 3600)
         self._storage_media_height = self.__safe_refresh(config.get("storage_media_height", 250), 180, 420)
-        summary_spacing_raw = config.get("summary_spacing", config.get("calendar_stretch_row_height", 8))
+        summary_spacing_raw = config.get("calendar_stretch_row_height", config.get("summary_spacing", 8))
         self._summary_spacing = self.__safe_refresh(summary_spacing_raw, 0, 40)
 
     def get_state(self) -> bool:
@@ -314,7 +314,8 @@ class DashboardPlus(_PluginBase):
                                                         "type": "number",
                                                         "min": 70,
                                                         "max": 150,
-                                                        "placeholder": "110"
+                                                        "placeholder": "110",
+                                                        "disabled": self._calendar_auto_stretch
                                                     }
                                                 }]
                                             },
@@ -383,7 +384,7 @@ class DashboardPlus(_PluginBase):
                                             },
                                             {
                                                 "component": "VCol",
-                                                "props": {"cols": 12, "md": 3},
+                                                "props": {"cols": 12, "md": 3, "style": {"display": "block" if self._calendar_auto_stretch else "none"}},
                                                 "content": [{
                                                     "component": "VTextField",
                                                     "props": {
@@ -398,7 +399,7 @@ class DashboardPlus(_PluginBase):
                                             },
                                             {
                                                 "component": "VCol",
-                                                "props": {"cols": 12, "md": 3},
+                                                "props": {"cols": 12, "md": 3, "style": {"display": "block" if self._calendar_auto_stretch else "none"}},
                                                 "content": [{
                                                     "component": "VSelect",
                                                     "props": {
@@ -413,7 +414,7 @@ class DashboardPlus(_PluginBase):
                                             },
                                             {
                                                 "component": "VCol",
-                                                "props": {"cols": 12, "md": 3},
+                                                "props": {"cols": 12, "md": 3, "style": {"display": "block" if self._calendar_auto_stretch else "none"}},
                                                 "content": [{
                                                     "component": "VTextField",
                                                     "props": {
@@ -600,7 +601,6 @@ class DashboardPlus(_PluginBase):
             "site_stat_max_height": self._site_stat_max_height,
             "storage_media_refresh": self._storage_media_refresh,
             "storage_media_height": self._storage_media_height,
-            "summary_spacing": self._summary_spacing,
         }
 
     def get_page(self) -> List[dict]:
@@ -879,7 +879,7 @@ class DashboardPlus(_PluginBase):
         auto_cell_flex = f"1 1 {self._calendar_min_cell_width}px"
         calendar_width = week_count * (cell_size + cell_gap)
         cell_width_value = auto_cell_width if self._calendar_auto_stretch else f"{cell_size}px"
-        cell_height_value = "auto" if self._calendar_auto_stretch else f"{cell_size}px"
+        cell_height_value = f"{cell_size}px"
         radius = f"{self._cell_radius:.1f}px"
 
         label_cells = []
@@ -903,9 +903,8 @@ class DashboardPlus(_PluginBase):
                         "width": cell_width_value,
                         "flex": auto_cell_flex,
                         "minWidth": f"{self._calendar_min_cell_width}px",
-                        "height": "0",
-                        "paddingTop": "100%",
-                        "boxSizing": "border-box",
+                        "height": "auto",
+                        "aspectRatio": "1 / 1",
                         "borderRadius": radius,
                         "backgroundColor": theme_colors[cell["level"]],
                         "marginRight": f"{cell_gap}px",
@@ -1327,8 +1326,8 @@ class DashboardPlus(_PluginBase):
                                     }
                                 }
                             },
-                            {"component": "div", "props": {"class": "text-subtitle-1 font-weight-medium", "style": {"lineHeight": "1.2", "marginTop": "-2px", "paddingLeft": "2px"}}, "text": "储存空间"},
-                            {"component": "div", "props": {"class": "text-h6 text-primary", "style": {"lineHeight": "1.2", "marginTop": "2px", "paddingLeft": "2px"}}, "text": self.__format_size(total_storage)},
+                            {"component": "div", "props": {"class": "text-subtitle-1 font-weight-medium", "style": {"lineHeight": "1.2", "marginTop": "-2px", "marginLeft": "0", "paddingLeft": "0"}}, "text": "储存空间"},
+                            {"component": "div", "props": {"class": "text-h6 text-primary", "style": {"lineHeight": "1.2", "marginTop": "2px", "marginLeft": "0", "paddingLeft": "0"}}, "text": self.__format_size(total_storage)},
                             {"component": "div", "props": {"class": "text-caption mt-1"}, "text": f"已使用 {used_percent}% 🚀"},
                             {"component": "VProgressLinear", "props": {"modelValue": used_percent, "color": "primary", "height": 8, "rounded": True}}
                         ]
@@ -1337,7 +1336,7 @@ class DashboardPlus(_PluginBase):
                     {
                         "component": "div",
                         "content": [
-                            {"component": "div", "props": {"class": "text-subtitle-1 font-weight-medium pb-1", "style": {"paddingLeft": "2px"}}, "text": "媒体统计"},
+                            {"component": "div", "props": {"class": "text-subtitle-1 font-weight-medium pb-1", "style": {"lineHeight": "1.2", "marginLeft": "0", "paddingLeft": "0"}}, "text": "媒体统计"},
                             {
                                 "component": "VRow",
                                 "props": {"noGutters": True, "class": "justify-center"},
