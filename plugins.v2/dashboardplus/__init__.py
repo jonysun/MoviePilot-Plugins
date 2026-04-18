@@ -1,4 +1,5 @@
 import math
+import re
 from random import shuffle
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
@@ -23,7 +24,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.3"
+    plugin_version = "1.2.5"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -1628,6 +1629,13 @@ class DashboardPlus(_PluginBase):
 
     def __build_today_recommend_elements(self) -> List[dict]:
         pool = self.__load_today_recommend_pool()
+        for sample in pool[:5]:
+            logger.debug(
+                "[dashboardplus:today_recommend] selected_sample mediaid=%s title=%s backdrop=%s",
+                sample.get("mediaid"),
+                sample.get("title"),
+                str(sample.get("backdrop") or "")[:180],
+            )
         before_backdrop_filter = len(pool)
         pool = [item for item in pool if self.__is_usable_backdrop(item.get("backdrop"))]
         logger.info(
@@ -1811,8 +1819,37 @@ class DashboardPlus(_PluginBase):
             "tv_normal.png",
             "tv_normal.jpg",
             "tv_large.jpg",
+            "s_ratio_poster",
+            "l_ratio_poster",
+            "subject/m/public",
+            "imageview2/1/w/500/h/750",
+            "imageview2/1/w/600/h/900",
+            "w500/h750",
+            "w600/h900",
+            "w400/h600",
+            "w300/h450",
         ]
-        return not any(marker in lower_url for marker in bad_markers)
+        if any(marker in lower_url for marker in bad_markers):
+            return False
+
+        ratio_patterns = [
+            r"/w/?(\d{2,4})/h/?(\d{2,4})",
+            r"[?&]w=(\d{2,4})[&].*?[?&]h=(\d{2,4})",
+            r"[?&]h=(\d{2,4})[&].*?[?&]w=(\d{2,4})",
+        ]
+        for pattern in ratio_patterns:
+            match = re.search(pattern, lower_url)
+            if not match:
+                continue
+            try:
+                w = int(match.group(1))
+                h = int(match.group(2))
+                if h > int(w * 1.2):
+                    return False
+            except Exception:
+                continue
+
+        return True
 
     def __cache_valid(self, ts: float, now_ts: Optional[float] = None) -> bool:
         try:
@@ -1997,19 +2034,24 @@ class DashboardPlus(_PluginBase):
         chain = RecommendChain()
         items: List[dict] = []
 
-        source_calls = []
+        source_calls: List[Tuple[str, Any]] = []
         if self._today_recommend_source_scope in {"all", "imdb"}:
-            source_calls.append(lambda: chain.tmdb_trending(page=1))
+            source_calls.append(("tmdb_trending", lambda: chain.tmdb_trending(page=1)))
         if self._today_recommend_source_scope in {"all", "douban"}:
             source_calls.extend([
-                lambda: chain.douban_movie_showing(page=1, count=30),
-                lambda: chain.douban_movies(page=1, count=30),
-                lambda: chain.douban_tvs(page=1, count=30),
+                ("douban_movie_showing", lambda: chain.douban_movie_showing(page=1, count=30)),
+                ("douban_movies", lambda: chain.douban_movies(page=1, count=30)),
+                ("douban_tvs", lambda: chain.douban_tvs(page=1, count=30)),
             ])
 
-        for fetch_source in source_calls:
+        for source_name, fetch_source in source_calls:
             try:
-                items.extend(fetch_source() or [])
+                source_items = fetch_source() or []
+                for raw in source_items:
+                    if isinstance(raw, dict):
+                        payload = dict(raw)
+                        payload["_recommend_source"] = source_name
+                        items.append(payload)
             except Exception:
                 continue
 
@@ -2023,6 +2065,8 @@ class DashboardPlus(_PluginBase):
     def __normalize_recommend_item(self, raw: dict) -> Optional[dict]:
         if not isinstance(raw, dict):
             return None
+
+        recommend_source = str(raw.get("_recommend_source") or "")
 
         tmdb_id = raw.get("tmdb_id") or raw.get("tmdbid")
         douban_id = raw.get("douban_id") or raw.get("doubanid")
@@ -2045,8 +2089,8 @@ class DashboardPlus(_PluginBase):
         mtype = str(raw.get("type") or "").strip()
 
         backdrop = self.__normalize_image_url(raw.get("backdrop") or raw.get("backdrop_path"))
-        # Douban-like entries usually provide poster-shaped image in backdrop field; force enrichment path.
-        if douban_id and not tmdb_id:
+        # Douban-source entries should never trust native backdrop; force enrichment from non-douban providers.
+        if recommend_source.startswith("douban"):
             backdrop = ""
         poster = self.__normalize_image_url(raw.get("poster") or raw.get("poster_path"))
 
@@ -2060,6 +2104,7 @@ class DashboardPlus(_PluginBase):
             "tmdb_id": tmdb_id,
             "douban_id": douban_id,
             "imdb_id": imdb_id,
+            "source": recommend_source,
         }
 
     def __is_media_in_library(self, item: dict) -> bool:
