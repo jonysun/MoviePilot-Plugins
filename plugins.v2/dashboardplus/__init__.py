@@ -14,7 +14,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.1.2"
+    plugin_version = "1.1.4"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -875,8 +875,8 @@ class DashboardPlus(_PluginBase):
         row_gap = max(1, int(round(1 * scale_ratio)))
         weekday_col_base = 34 if self._label_style == "english_abbr" else 24
         weekday_col_width = max(20, int(round(weekday_col_base * scale_ratio)))
-        auto_cell_width = "0"
-        auto_cell_flex = f"1 1 {self._calendar_min_cell_width}px"
+        auto_cell_width = f"max({self._calendar_min_cell_width}px, calc((100% - {max(0, (week_count - 1) * cell_gap)}px) / {max(1, week_count)}))"
+        auto_cell_flex = "none"
         calendar_width = week_count * (cell_size + cell_gap)
         cell_width_value = auto_cell_width if self._calendar_auto_stretch else f"{cell_size}px"
         cell_height_value = f"{cell_size}px"
@@ -892,8 +892,7 @@ class DashboardPlus(_PluginBase):
                     "text": month_labels.get(week_index, "")})
 
         weekday_labels = self.__weekday_labels()
-        weekday_label_elements = []
-        day_row_elements = []
+        calendar_row_elements = []
         for weekday in range(7):
             row_cells = []
             for week_index in range(week_count):
@@ -901,7 +900,7 @@ class DashboardPlus(_PluginBase):
                 if self._calendar_auto_stretch:
                     cell_style = {
                         "width": cell_width_value,
-                        "flex": auto_cell_flex,
+                        "flex": "none",
                         "minWidth": f"{self._calendar_min_cell_width}px",
                         "height": "auto",
                         "aspectRatio": "1 / 1",
@@ -925,19 +924,60 @@ class DashboardPlus(_PluginBase):
                     }
                 row_cells.append({"component": "div", "props": {"title": cell["tooltip"] if cell["in_range"] else "", "style": cell_style}})
 
-            weekday_label_elements.append({"component": "div", "props": {"style": {
-                "width": f"{weekday_col_width}px", "minWidth": f"{weekday_col_width}px", "height": cell_height_value,
-                "lineHeight": cell_height_value, "marginBottom": f"{row_gap}px", "fontSize": "10px", "textAlign": "right",
-                "paddingRight": "10px", "color": "rgba(var(--v-theme-on-surface), 0.65)", "whiteSpace": "nowrap"}},
-                "text": weekday_labels[weekday]})
+            label_style = {
+                "width": f"{weekday_col_width}px",
+                "minWidth": f"{weekday_col_width}px",
+                "fontSize": "10px",
+                "textAlign": "right",
+                "paddingRight": "10px",
+                "color": "rgba(var(--v-theme-on-surface), 0.65)",
+                "whiteSpace": "nowrap",
+            }
+            if not self._calendar_auto_stretch:
+                label_style["height"] = cell_height_value
+                label_style["lineHeight"] = cell_height_value
 
-            day_row_elements.append({"component": "div", "props": {"class": "d-flex align-center", "style": {"marginBottom": f"{row_gap}px", "width": "100%" if self._calendar_auto_stretch else "auto"}}, "content": row_cells})
+            calendar_row_elements.append({
+                "component": "div",
+                "props": {"class": "d-flex align-center", "style": {"marginBottom": f"{row_gap}px", "width": "100%" if self._calendar_auto_stretch else "auto"}},
+                "content": [
+                    {"component": "div", "props": {"style": label_style}, "text": weekday_labels[weekday]},
+                    {"component": "div", "props": {"class": "d-flex align-center", "style": {"flex": "1 1 0", "minWidth": "0"} if self._calendar_auto_stretch else {}}, "content": row_cells}
+                ]
+            })
 
-        legend = {"component": "div", "props": {"class": "d-flex align-center justify-end", "style": {
-            "marginTop": "2px", "gap": "4px", "fontSize": "11px", "color": "rgba(var(--v-theme-on-surface), 0.65)"}},
-                  "content": [{"component": "span", "text": "less"}, *[{"component": "div", "props": {"style": {
-                      "width": f"{cell_size}px", "height": f"{cell_size}px", "borderRadius": radius,
-                      "backgroundColor": theme_colors[level]}}} for level in range(5)], {"component": "span", "text": "more"}]}
+        if self._calendar_auto_stretch:
+            legend = {
+                "component": "div",
+                "props": {"class": "d-flex align-center", "style": {
+                    "marginTop": "2px", "fontSize": "11px", "color": "rgba(var(--v-theme-on-surface), 0.65)"
+                }},
+                "content": [
+                    {"component": "div", "props": {"style": {"width": f"{weekday_col_width}px", "minWidth": f"{weekday_col_width}px", "paddingRight": "10px"}}},
+                    {
+                        "component": "div",
+                        "props": {"class": "d-flex align-center justify-end", "style": {"flex": "1 1 0", "minWidth": "0", "gap": "4px"}},
+                        "content": [
+                            {"component": "span", "text": "less"},
+                            *[{"component": "div", "props": {"style": {
+                                "width": auto_cell_width,
+                                "minWidth": f"{self._calendar_min_cell_width}px",
+                                "height": "auto",
+                                "aspectRatio": "1 / 1",
+                                "borderRadius": radius,
+                                "backgroundColor": theme_colors[level]
+                            }}} for level in range(5)],
+                            {"component": "span", "text": "more"}
+                        ]
+                    }
+                ]
+            }
+        else:
+            legend = {"component": "div", "props": {"class": "d-flex align-center justify-end", "style": {
+                "marginTop": "2px", "gap": "4px", "fontSize": "11px", "color": "rgba(var(--v-theme-on-surface), 0.65)"}},
+                      "content": [{"component": "span", "text": "less"}, *[{"component": "div", "props": {"style": {
+                          "width": f"{cell_size}px", "height": f"{cell_size}px", "borderRadius": radius,
+                          "backgroundColor": theme_colors[level]}}} for level in range(5)], {"component": "span", "text": "more"}]}
 
         metric_md = 4 if not self._show_date_range else 3
         stats_content = [
@@ -961,7 +1001,7 @@ class DashboardPlus(_PluginBase):
                 {"component": "div", "props": {"style": {"width": f"{weekday_col_width}px", "minWidth": f"{weekday_col_width}px"}}},
                 {"component": "div", "props": {"class": "d-flex align-center", "style": {"flex": "1 1 0", "minWidth": "0"} if self._calendar_auto_stretch else {}}, "content": label_cells},
             ],
-        } if self._show_month_labels else {"component": "div"}, {"component": "div", "props": {"class": "d-flex"}, "content": [{"component": "div", "content": weekday_label_elements}, {"component": "div", "props": {"style": {"flex": "1 1 0", "minWidth": "0"} if self._calendar_auto_stretch else {}}, "content": day_row_elements}]}]
+        } if self._show_month_labels else {"component": "div"}, {"component": "div", "content": calendar_row_elements}]
 
         main_calendar = {
             "component": "div",
