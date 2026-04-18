@@ -4,13 +4,16 @@ from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
+from app.chain.media import MediaChain
 from app.chain.recommend import RecommendChain
+from app.core.metainfo import MetaInfo
 from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.models.sitestatistic import SiteStatistic
 from app.db.subscribe_oper import SubscribeOper
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.plugins import _PluginBase
+from app.schemas import MediaType
 from app.utils.system import SystemUtils
 
 
@@ -18,7 +21,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.0"
+    plugin_version = "1.2.1"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -75,6 +78,13 @@ class DashboardPlus(_PluginBase):
     _today_recommend_size: str = "half"
     _today_recommend_count: int = 3
     _today_recommend_speed: int = 5
+    _today_recommend_source_scope: str = "all"
+    _today_recommend_banner_policy: str = "auto"
+    _today_recommend_banner_cache_ttl: int = 43200
+    _today_recommend_banner_fill_limit: int = 3
+    _today_banner_cache: Dict[str, Dict[str, Any]]
+    _today_banner_fail_cache: Dict[str, float]
+    _today_banner_cache_ops: int = 0
 
     _summary_spacing: int = 8
 
@@ -159,6 +169,25 @@ class DashboardPlus(_PluginBase):
             self._today_recommend_size = "half"
         self._today_recommend_count = self.__safe_refresh(config.get("today_recommend_count", 3), 1, 5)
         self._today_recommend_speed = self.__safe_refresh(config.get("today_recommend_speed", 5), 3, 10)
+        self._today_recommend_source_scope = str(config.get("today_recommend_source_scope", "all") or "all")
+        if self._today_recommend_source_scope not in {"all", "douban", "imdb"}:
+            self._today_recommend_source_scope = "all"
+        self._today_recommend_banner_policy = str(config.get("today_recommend_banner_policy", "auto") or "auto")
+        if self._today_recommend_banner_policy not in {"auto", "existing_only", "enhanced"}:
+            self._today_recommend_banner_policy = "auto"
+        self._today_recommend_banner_cache_ttl = self.__safe_refresh(
+            config.get("today_recommend_banner_cache_ttl", 43200),
+            600,
+            172800
+        )
+        self._today_recommend_banner_fill_limit = self.__safe_refresh(
+            config.get("today_recommend_banner_fill_limit", 3),
+            1,
+            10
+        )
+        self._today_banner_cache = {}
+        self._today_banner_fail_cache = {}
+        self._today_banner_cache_ops = 0
 
         self._cell_scale = self.__safe_scale(config.get("cell_scale", 110))
         self._cell_gap = self.__safe_refresh(config.get("cell_gap", 2), 0, 8)
@@ -629,6 +658,72 @@ class DashboardPlus(_PluginBase):
                                             }]
                                         }
                                     ]
+                                }, {
+                                    "component": "VRow",
+                                    "content": [
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [{
+                                                "component": "VSelect",
+                                                "props": {
+                                                    "model": "today_recommend_source_scope",
+                                                    "label": "推荐来源",
+                                                    "items": [
+                                                        {"title": "全部", "value": "all"},
+                                                        {"title": "豆瓣", "value": "douban"},
+                                                        {"title": "IMDb", "value": "imdb"}
+                                                    ]
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [{
+                                                "component": "VSelect",
+                                                "props": {
+                                                    "model": "today_recommend_banner_policy",
+                                                    "label": "横幅来源策略",
+                                                    "items": [
+                                                        {"title": "自动（推荐）", "value": "auto"},
+                                                        {"title": "仅现有来源", "value": "existing_only"},
+                                                        {"title": "增强补全", "value": "enhanced"}
+                                                    ]
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_banner_cache_ttl",
+                                                    "label": "横幅缓存TTL（秒）",
+                                                    "type": "number",
+                                                    "min": 600,
+                                                    "max": 172800,
+                                                    "placeholder": "43200"
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_banner_fill_limit",
+                                                    "label": "每轮补图上限（1-10）",
+                                                    "type": "number",
+                                                    "min": 1,
+                                                    "max": 10,
+                                                    "placeholder": "3"
+                                                }
+                                            }]
+                                        }
+                                    ]
                                 }]
                             }
                         ]
@@ -660,6 +755,10 @@ class DashboardPlus(_PluginBase):
             "today_recommend_size": self._today_recommend_size,
             "today_recommend_count": self._today_recommend_count,
             "today_recommend_speed": self._today_recommend_speed,
+            "today_recommend_source_scope": self._today_recommend_source_scope,
+            "today_recommend_banner_policy": self._today_recommend_banner_policy,
+            "today_recommend_banner_cache_ttl": self._today_recommend_banner_cache_ttl,
+            "today_recommend_banner_fill_limit": self._today_recommend_banner_fill_limit,
             "cell_scale": self._cell_scale,
             "cell_gap": self._cell_gap,
             "cell_radius": self._cell_radius,
@@ -1527,6 +1626,7 @@ class DashboardPlus(_PluginBase):
 
     def __build_today_recommend_elements(self) -> List[dict]:
         pool = self.__load_today_recommend_pool()
+        pool = [item for item in pool if str(item.get("backdrop") or "").strip()]
         if not pool:
             return [{
                 "component": "VAlert",
@@ -1536,9 +1636,7 @@ class DashboardPlus(_PluginBase):
 
         cards: List[dict] = []
         for media in pool:
-            image_url = str(media.get("backdrop") or media.get("poster") or "").strip()
-            if not image_url:
-                continue
+            image_url = str(media.get("backdrop") or "").strip()
 
             cards.append({
                 "component": "VCarouselItem",
@@ -1679,16 +1777,168 @@ class DashboardPlus(_PluginBase):
             return value[:4]
         return value
 
+    def __cache_valid(self, ts: float, now_ts: Optional[float] = None) -> bool:
+        try:
+            current_ts = float(now_ts) if now_ts is not None else datetime.now().timestamp()
+            return (current_ts - float(ts)) < self._today_recommend_banner_cache_ttl
+        except Exception:
+            return False
+
+    def __prune_banner_caches(self):
+        self._today_banner_cache_ops = int(getattr(self, "_today_banner_cache_ops", 0)) + 1
+        if self._today_banner_cache_ops % 20 != 0:
+            return
+
+        now_ts = datetime.now().timestamp()
+        self._today_banner_cache = {
+            key: value
+            for key, value in self._today_banner_cache.items()
+            if isinstance(value, dict) and self.__cache_valid(value.get("ts"), now_ts)
+        }
+        self._today_banner_fail_cache = {
+            key: value
+            for key, value in self._today_banner_fail_cache.items()
+            if self.__cache_valid(value, now_ts)
+        }
+
+    @staticmethod
+    def __banner_cache_key(item: dict) -> str:
+        mediaid = str(item.get("mediaid") or "").strip()
+        if mediaid:
+            return mediaid
+
+        title = str(item.get("title") or "").strip().lower()
+        year = str(item.get("year") or "").strip()
+        mtype = str(item.get("type") or "").strip().lower()
+        if title:
+            return f"fallback:{title}|{year}|{mtype}"
+        return ""
+
+    @staticmethod
+    def __media_type_for_chain(raw_type: Any) -> Optional[MediaType]:
+        normalized_type = DashboardPlus.__normalize_media_type_query(raw_type)
+        if normalized_type not in {"电影", "电视剧"}:
+            return None
+        try:
+            return MediaType(normalized_type)
+        except Exception:
+            return None
+
+    @staticmethod
+    def __guess_ids_from_mediaid(mediaid: str) -> Tuple[Optional[str], Optional[str]]:
+        value = str(mediaid or "").strip()
+        if ":" not in value:
+            return None, None
+        prefix, mid = value.split(":", 1)
+        if not mid:
+            return None, None
+        source = prefix.strip().lower()
+        if source == "tmdb":
+            return mid, None
+        if source == "douban":
+            return None, mid
+        return None, None
+
+    def __ensure_banner(self, item: dict) -> dict:
+        if not isinstance(item, dict):
+            return item
+        if not isinstance(getattr(self, "_today_banner_cache", None), dict):
+            self._today_banner_cache = {}
+        if not isinstance(getattr(self, "_today_banner_fail_cache", None), dict):
+            self._today_banner_fail_cache = {}
+
+        self.__prune_banner_caches()
+
+        if str(item.get("backdrop") or "").strip():
+            return item
+        if self._today_recommend_banner_policy == "existing_only":
+            return item
+
+        cache_key = self.__banner_cache_key(item)
+        if not cache_key:
+            return item
+
+        cached = self._today_banner_cache.get(cache_key)
+        if cached:
+            cached_ts = cached.get("ts")
+            if self.__cache_valid(cached_ts):
+                cached_backdrop = str(cached.get("backdrop") or "").strip()
+                if cached_backdrop:
+                    enriched = dict(item)
+                    enriched["backdrop"] = cached_backdrop
+                    return enriched
+            else:
+                self._today_banner_cache.pop(cache_key, None)
+
+        fail_ts = self._today_banner_fail_cache.get(cache_key)
+        if fail_ts is not None:
+            if self.__cache_valid(fail_ts):
+                return item
+            self._today_banner_fail_cache.pop(cache_key, None)
+
+        mediaid = str(item.get("mediaid") or "").strip()
+        tmdb_id = item.get("tmdb_id")
+        douban_id = item.get("douban_id")
+        if mediaid and not tmdb_id and not douban_id:
+            guessed_tmdb, guessed_douban = self.__guess_ids_from_mediaid(mediaid)
+            tmdb_id = tmdb_id or guessed_tmdb
+            douban_id = douban_id or guessed_douban
+
+        if not tmdb_id and not douban_id and self._today_recommend_banner_policy != "enhanced":
+            self._today_banner_fail_cache[cache_key] = datetime.now().timestamp()
+            return item
+
+        try:
+            mediachain = MediaChain()
+            meta = None
+            if not tmdb_id and not douban_id and self._today_recommend_banner_policy == "enhanced":
+                title = str(item.get("title") or "").strip()
+                if title:
+                    year = str(item.get("year") or "").strip()
+                    subtitle = year if year else ""
+                    meta = MetaInfo(title=title, subtitle=subtitle)
+            mediainfo = mediachain.recognize_media(
+                meta=meta,
+                tmdbid=tmdb_id,
+                doubanid=douban_id,
+                mtype=self.__media_type_for_chain(item.get("type")),
+            )
+            if mediainfo:
+                mediachain.obtain_images(mediainfo)
+                backdrop = ""
+                get_backdrop_image = getattr(mediainfo, "get_backdrop_image", None)
+                if callable(get_backdrop_image):
+                    backdrop = str(get_backdrop_image() or "").strip()
+                if not backdrop:
+                    backdrop = str(getattr(mediainfo, "backdrop_path", "") or "").strip()
+                if backdrop:
+                    self._today_banner_cache[cache_key] = {
+                        "backdrop": backdrop,
+                        "ts": datetime.now().timestamp(),
+                    }
+                    self._today_banner_fail_cache.pop(cache_key, None)
+                    enriched = dict(item)
+                    enriched["backdrop"] = backdrop
+                    return enriched
+        except Exception:
+            pass
+
+        self._today_banner_fail_cache[cache_key] = datetime.now().timestamp()
+        return item
+
     def __fetch_today_recommend_sources(self) -> List[dict]:
         chain = RecommendChain()
         items: List[dict] = []
 
-        source_calls = [
-            lambda: chain.tmdb_trending(page=1),
-            lambda: chain.douban_movie_showing(page=1, count=30),
-            lambda: chain.douban_movies(page=1, count=30),
-            lambda: chain.douban_tvs(page=1, count=30),
-        ]
+        source_calls = []
+        if self._today_recommend_source_scope in {"all", "imdb"}:
+            source_calls.append(lambda: chain.tmdb_trending(page=1))
+        if self._today_recommend_source_scope in {"all", "douban"}:
+            source_calls.extend([
+                lambda: chain.douban_movie_showing(page=1, count=30),
+                lambda: chain.douban_movies(page=1, count=30),
+                lambda: chain.douban_tvs(page=1, count=30),
+            ])
 
         for fetch_source in source_calls:
             try:
@@ -1698,22 +1948,30 @@ class DashboardPlus(_PluginBase):
 
         return items
 
+    def __match_scope_filter(self, item: dict) -> bool:
+        if self._today_recommend_source_scope != "imdb":
+            return True
+        return bool(item.get("tmdb_id") or item.get("imdb_id"))
+
     def __normalize_recommend_item(self, raw: dict) -> Optional[dict]:
         if not isinstance(raw, dict):
             return None
 
         tmdb_id = raw.get("tmdb_id") or raw.get("tmdbid")
         douban_id = raw.get("douban_id") or raw.get("doubanid")
+        imdb_id = raw.get("imdb_id") or raw.get("imdbid")
         mediaid = ""
         if tmdb_id:
             mediaid = f"tmdb:{tmdb_id}"
         elif douban_id:
             mediaid = f"douban:{douban_id}"
+        elif imdb_id:
+            mediaid = f"imdb:{imdb_id}"
 
         title = str(raw.get("title") or raw.get("name") or "").strip()
         if not title:
             return None
-        if not mediaid:
+        if not mediaid and self._today_recommend_banner_policy != "enhanced":
             return None
 
         year = self.__safe_year_text(raw.get("year") or raw.get("release_date") or raw.get("first_air_date"))
@@ -1728,6 +1986,7 @@ class DashboardPlus(_PluginBase):
             "poster": raw.get("poster") or raw.get("poster_path") or "",
             "tmdb_id": tmdb_id,
             "douban_id": douban_id,
+            "imdb_id": imdb_id,
         }
 
     def __is_media_in_library(self, item: dict) -> bool:
@@ -1753,7 +2012,7 @@ class DashboardPlus(_PluginBase):
         normalized_items: List[dict] = []
         for raw in self.__fetch_today_recommend_sources():
             item = self.__normalize_recommend_item(raw)
-            if item:
+            if item and self.__match_scope_filter(item):
                 normalized_items.append(item)
 
         unique_items: List[dict] = []
@@ -1778,7 +2037,20 @@ class DashboardPlus(_PluginBase):
                 pool.append(item)
 
         shuffle(pool)
-        return pool[:self._today_recommend_count]
+        selected = pool[:self._today_recommend_count]
+
+        if self._today_recommend_banner_policy == "existing_only":
+            return selected
+
+        filled = 0
+        output: List[dict] = []
+        for item in selected:
+            current = item
+            if not str(current.get("backdrop") or "").strip() and filled < self._today_recommend_banner_fill_limit:
+                current = self.__ensure_banner(current)
+                filled += 1
+            output.append(current)
+        return output
 
     @staticmethod
     def __format_size(size_bytes: float) -> str:
