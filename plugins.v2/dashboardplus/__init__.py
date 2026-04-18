@@ -23,7 +23,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.2"
+    plugin_version = "1.2.3"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -1958,6 +1958,35 @@ class DashboardPlus(_PluginBase):
                     enriched = dict(item)
                     enriched["backdrop"] = backdrop
                     return enriched
+
+            # Douban items may have only poster-like images; fallback to title/year recognition once.
+            if douban_id and not tmdb_id:
+                title = str(item.get("title") or "").strip()
+                if title:
+                    year = str(item.get("year") or "").strip()
+                    fallback_meta = MetaInfo(title=title, subtitle=year if year else "")
+                    fallback_info = mediachain.recognize_media(
+                        meta=fallback_meta,
+                        mtype=self.__media_type_for_chain(item.get("type")),
+                    )
+                    if fallback_info:
+                        mediachain.obtain_images(fallback_info)
+                        fallback_backdrop = ""
+                        fallback_getter = getattr(fallback_info, "get_backdrop_image", None)
+                        if callable(fallback_getter):
+                            fallback_backdrop = str(fallback_getter() or "").strip()
+                        if not fallback_backdrop:
+                            fallback_backdrop = str(getattr(fallback_info, "backdrop_path", "") or "").strip()
+                        fallback_backdrop = self.__normalize_image_url(fallback_backdrop)
+                        if self.__is_usable_backdrop(fallback_backdrop):
+                            self._today_banner_cache[cache_key] = {
+                                "backdrop": fallback_backdrop,
+                                "ts": datetime.now().timestamp(),
+                            }
+                            self._today_banner_fail_cache.pop(cache_key, None)
+                            enriched = dict(item)
+                            enriched["backdrop"] = fallback_backdrop
+                            return enriched
         except Exception:
             pass
 
@@ -2016,6 +2045,9 @@ class DashboardPlus(_PluginBase):
         mtype = str(raw.get("type") or "").strip()
 
         backdrop = self.__normalize_image_url(raw.get("backdrop") or raw.get("backdrop_path"))
+        # Douban-like entries usually provide poster-shaped image in backdrop field; force enrichment path.
+        if douban_id and not tmdb_id:
+            backdrop = ""
         poster = self.__normalize_image_url(raw.get("poster") or raw.get("poster_path"))
 
         return {
@@ -2099,21 +2131,25 @@ class DashboardPlus(_PluginBase):
         candidate_after_library = len(pool)
 
         shuffle(pool)
-        selected = pool[:self._today_recommend_count]
-
         logger.info(
-            "[dashboardplus:today_recommend] source_scope=%s raw=%s normalized=%s deduped=%s filtered_in_library=%s post_library=%s selected=%s",
+            "[dashboardplus:today_recommend] source_scope=%s raw=%s normalized=%s deduped=%s filtered_in_library=%s post_library=%s target_count=%s",
             self._today_recommend_source_scope,
             raw_count,
             normalized_count,
             unique_count,
             in_library_filtered,
             candidate_after_library,
-            len(selected),
+            self._today_recommend_count,
         )
 
         if self._today_recommend_banner_policy == "existing_only":
-            missing_backdrop = sum(1 for item in selected if not self.__is_usable_backdrop(item.get("backdrop")))
+            selected = []
+            for item in pool:
+                if self.__is_usable_backdrop(item.get("backdrop")):
+                    selected.append(item)
+                if len(selected) >= self._today_recommend_count:
+                    break
+            missing_backdrop = max(0, self._today_recommend_count - len(selected))
             logger.info(
                 "[dashboardplus:today_recommend] banner_policy=%s selected_missing_backdrop=%s",
                 self._today_recommend_banner_policy,
@@ -2123,14 +2159,17 @@ class DashboardPlus(_PluginBase):
 
         filled = 0
         output: List[dict] = []
-        for item in selected:
+        for item in pool:
             current = item
-            if not str(current.get("backdrop") or "").strip() and filled < self._today_recommend_banner_fill_limit:
+            if not self.__is_usable_backdrop(current.get("backdrop")) and filled < self._today_recommend_banner_fill_limit:
                 current = self.__ensure_banner(current)
                 filled += 1
-            output.append(current)
+            if self.__is_usable_backdrop(current.get("backdrop")):
+                output.append(current)
+            if len(output) >= self._today_recommend_count:
+                break
 
-        missing_backdrop = sum(1 for item in output if not self.__is_usable_backdrop(item.get("backdrop")))
+        missing_backdrop = max(0, self._today_recommend_count - len(output))
         logger.info(
             "[dashboardplus:today_recommend] banner_policy=%s fill_attempted=%s missing_backdrop_after_enrich=%s",
             self._today_recommend_banner_policy,
