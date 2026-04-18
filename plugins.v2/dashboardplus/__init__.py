@@ -24,7 +24,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.5"
+    plugin_version = "1.2.6"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -1814,6 +1814,8 @@ class DashboardPlus(_PluginBase):
         lower_url = url.lower()
         if not lower_url.startswith("http://") and not lower_url.startswith("https://"):
             return False
+        if "doubanio.com" in lower_url or "douban.com" in lower_url:
+            return False
         bad_markers = [
             "movie_large.jpg",
             "tv_normal.png",
@@ -1850,6 +1852,18 @@ class DashboardPlus(_PluginBase):
                 continue
 
         return True
+
+    @staticmethod
+    def __extract_tmdbid(match_data: Any) -> Optional[int]:
+        if not isinstance(match_data, dict):
+            return None
+        value = match_data.get("id") or match_data.get("tmdb_id") or match_data.get("tmdbid")
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except Exception:
+            return None
 
     def __cache_valid(self, ts: float, now_ts: Optional[float] = None) -> bool:
         try:
@@ -1971,11 +1985,12 @@ class DashboardPlus(_PluginBase):
                     year = str(item.get("year") or "").strip()
                     subtitle = year if year else ""
                     meta = MetaInfo(title=title, subtitle=subtitle)
+            media_type = self.__media_type_for_chain(item.get("type"))
             mediainfo = mediachain.recognize_media(
                 meta=meta,
                 tmdbid=tmdb_id,
                 doubanid=douban_id,
-                mtype=self.__media_type_for_chain(item.get("type")),
+                mtype=media_type,
             )
             if mediainfo:
                 mediachain.obtain_images(mediainfo)
@@ -2004,7 +2019,7 @@ class DashboardPlus(_PluginBase):
                     fallback_meta = MetaInfo(title=title, subtitle=year if year else "")
                     fallback_info = mediachain.recognize_media(
                         meta=fallback_meta,
-                        mtype=self.__media_type_for_chain(item.get("type")),
+                        mtype=media_type,
                     )
                     if fallback_info:
                         mediachain.obtain_images(fallback_info)
@@ -2024,6 +2039,37 @@ class DashboardPlus(_PluginBase):
                             enriched = dict(item)
                             enriched["backdrop"] = fallback_backdrop
                             return enriched
+
+                    # Douban entry fallback: force TMDB match then obtain images.
+                    tmdb_match = mediachain.match_tmdbinfo(
+                        name=title,
+                        mtype=media_type,
+                        year=year or None,
+                    )
+                    tmdb_match_id = self.__extract_tmdbid(tmdb_match)
+                    if tmdb_match_id:
+                        tmdb_info = mediachain.recognize_media(
+                            tmdbid=tmdb_match_id,
+                            mtype=media_type,
+                        )
+                        if tmdb_info:
+                            mediachain.obtain_images(tmdb_info)
+                            tmdb_backdrop = ""
+                            tmdb_getter = getattr(tmdb_info, "get_backdrop_image", None)
+                            if callable(tmdb_getter):
+                                tmdb_backdrop = str(tmdb_getter() or "").strip()
+                            if not tmdb_backdrop:
+                                tmdb_backdrop = str(getattr(tmdb_info, "backdrop_path", "") or "").strip()
+                            tmdb_backdrop = self.__normalize_image_url(tmdb_backdrop)
+                            if self.__is_usable_backdrop(tmdb_backdrop):
+                                self._today_banner_cache[cache_key] = {
+                                    "backdrop": tmdb_backdrop,
+                                    "ts": datetime.now().timestamp(),
+                                }
+                                self._today_banner_fail_cache.pop(cache_key, None)
+                                enriched = dict(item)
+                                enriched["backdrop"] = tmdb_backdrop
+                                return enriched
         except Exception:
             pass
 
