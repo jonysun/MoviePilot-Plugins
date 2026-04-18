@@ -1,10 +1,14 @@
 import math
+from random import shuffle
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
+from urllib.parse import quote
 
+from app.chain.recommend import RecommendChain
 from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.models.sitestatistic import SiteStatistic
+from app.db.subscribe_oper import SubscribeOper
 from app.db.transferhistory_oper import TransferHistoryOper
 from app.plugins import _PluginBase
 from app.utils.system import SystemUtils
@@ -14,7 +18,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.1.4"
+    plugin_version = "1.2.0"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -34,7 +38,7 @@ class DashboardPlus(_PluginBase):
     _calendar_auto_stretch: bool = False
     _calendar_stretch_mode: str = "equal"
     _calendar_min_cell_width: int = 8
-    _calendar_stretch_row_height: int = 12
+    _calendar_stretch_row_height: int = 8
     _cell_scale: int = 110
     _cell_gap: int = 2
     _cell_radius: float = 4.0
@@ -66,6 +70,11 @@ class DashboardPlus(_PluginBase):
     _storage_media_size: str = "half"
     _storage_media_refresh: int = 300
     _storage_media_height: int = 250
+
+    # today recommend settings
+    _today_recommend_size: str = "half"
+    _today_recommend_count: int = 3
+    _today_recommend_speed: int = 5
 
     _summary_spacing: int = 8
 
@@ -144,6 +153,12 @@ class DashboardPlus(_PluginBase):
         self._storage_media_size = config.get("storage_media_size", "half")
         if self._storage_media_size not in self._SIZE_COLS:
             self._storage_media_size = "half"
+
+        self._today_recommend_size = config.get("today_recommend_size", "half")
+        if self._today_recommend_size not in self._SIZE_COLS:
+            self._today_recommend_size = "half"
+        self._today_recommend_count = self.__safe_refresh(config.get("today_recommend_count", 3), 1, 5)
+        self._today_recommend_speed = self.__safe_refresh(config.get("today_recommend_speed", 5), 3, 10)
 
         self._cell_scale = self.__safe_scale(config.get("cell_scale", 110))
         self._cell_gap = self.__safe_refresh(config.get("cell_gap", 2), 0, 8)
@@ -556,6 +571,67 @@ class DashboardPlus(_PluginBase):
                                 }]
                             }
                         ]
+                    },
+                    {
+                        "component": "VExpansionPanel",
+                        "content": [
+                            {"component": "VExpansionPanelTitle", "text": "今日推荐设置"},
+                            {
+                                "component": "VExpansionPanelText",
+                                "content": [{
+                                    "component": "VRow",
+                                    "content": [
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 4},
+                                            "content": [{
+                                                "component": "VSelect",
+                                                "props": {
+                                                    "model": "today_recommend_size",
+                                                    "label": "组件宽度",
+                                                    "items": [
+                                                        {"title": "1/3（33%）", "value": "one_third"},
+                                                        {"title": "1/2（50%）", "value": "half"},
+                                                        {"title": "2/3（66%）", "value": "two_third"},
+                                                        {"title": "3/3（100%）", "value": "full"}
+                                                    ]
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 4},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_count",
+                                                    "label": "轮播数量（1-5）",
+                                                    "type": "number",
+                                                    "min": 1,
+                                                    "max": 5,
+                                                    "placeholder": "3"
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 4},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_speed",
+                                                    "label": "轮播速度（3-10秒）",
+                                                    "type": "number",
+                                                    "min": 3,
+                                                    "max": 10,
+                                                    "placeholder": "5"
+                                                }
+                                            }]
+                                        }
+                                    ]
+                                }]
+                            }
+                        ]
                     }
                 ]
             }
@@ -581,6 +657,9 @@ class DashboardPlus(_PluginBase):
             "performance_size": self._performance_size,
             "site_stat_size": self._site_stat_size,
             "storage_media_size": self._storage_media_size,
+            "today_recommend_size": self._today_recommend_size,
+            "today_recommend_count": self._today_recommend_count,
+            "today_recommend_speed": self._today_recommend_speed,
             "cell_scale": self._cell_scale,
             "cell_gap": self._cell_gap,
             "cell_radius": self._cell_radius,
@@ -616,10 +695,11 @@ class DashboardPlus(_PluginBase):
             {"key": "performance", "name": "主机性能"},
             {"key": "site_statistics", "name": "站点统计"},
             {"key": "storage_media_compact", "name": "储存情况与媒体统计"},
+            {"key": "today_recommend", "name": "今日推荐"},
         ]
 
     def get_dashboard(self, key: str = None, **kwargs) -> Optional[Tuple[Dict[str, Any], Dict[str, Any], List[dict]]]:
-        if key and key not in {"calendar", "performance", "site_statistics", "storage_media_compact"}:
+        if key and key not in {"calendar", "performance", "site_statistics", "storage_media_compact", "today_recommend"}:
             return None
 
         key = key or "calendar"
@@ -641,6 +721,10 @@ class DashboardPlus(_PluginBase):
                 cols = self._SIZE_COLS.get(self._storage_media_size, self._SIZE_COLS["half"])
                 attrs = {"refresh": self._storage_media_refresh, "title": "储存情况与媒体统计", "border": True}
                 elements = self.__build_storage_media_compact_elements()
+            elif key == "today_recommend":
+                cols = self._SIZE_COLS.get(self._today_recommend_size, self._SIZE_COLS["half"])
+                attrs = {"refresh": 300, "title": "今日推荐", "border": True}
+                elements = self.__build_today_recommend_elements()
             else:
                 cols = self._SIZE_COLS.get(self._calendar_size, self._SIZE_COLS["two_third"])
                 attrs = {"refresh": self._calendar_refresh, "title": "媒体入库热力图", "border": True}
@@ -1440,6 +1524,261 @@ class DashboardPlus(_PluginBase):
                 ]
             }]
         }]
+
+    def __build_today_recommend_elements(self) -> List[dict]:
+        pool = self.__load_today_recommend_pool()
+        if not pool:
+            return [{
+                "component": "VAlert",
+                "props": {"type": "info", "variant": "tonal", "density": "compact"},
+                "text": "暂无可推荐内容",
+            }]
+
+        cards: List[dict] = []
+        for media in pool:
+            image_url = str(media.get("backdrop") or media.get("poster") or "").strip()
+            if not image_url:
+                continue
+
+            cards.append({
+                "component": "VCarouselItem",
+                "content": [{
+                    "component": "a",
+                    "props": {
+                        "href": self.__build_today_recommend_link(media),
+                        "style": {
+                            "display": "block",
+                            "width": "100%",
+                            "height": "100%",
+                            "textDecoration": "none",
+                            "position": "relative",
+                        },
+                    },
+                    "content": [
+                        {
+                            "component": "VImg",
+                            "props": {
+                                "src": image_url,
+                                "cover": True,
+                                "height": 220,
+                                "position": "center",
+                            },
+                        },
+                        {
+                            "component": "div",
+                            "props": {
+                                "style": {
+                                    "position": "absolute",
+                                    "left": "0",
+                                    "right": "0",
+                                    "bottom": "0",
+                                    "padding": "10px 12px",
+                                    "background": "linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, rgba(0, 0, 0, 0.72) 100%)",
+                                    "color": "#FFFFFF",
+                                }
+                            },
+                            "content": [
+                                {
+                                    "component": "div",
+                                    "props": {
+                                        "style": {
+                                            "fontSize": "16px",
+                                            "lineHeight": "1.2",
+                                            "fontWeight": 600,
+                                            "whiteSpace": "nowrap",
+                                            "overflow": "hidden",
+                                            "textOverflow": "ellipsis",
+                                        }
+                                    },
+                                    "text": str(media.get("title") or ""),
+                                },
+                                {
+                                    "component": "div",
+                                    "props": {
+                                        "style": {
+                                            "marginTop": "4px",
+                                            "fontSize": "12px",
+                                            "lineHeight": "1.2",
+                                            "opacity": 0.9,
+                                            "whiteSpace": "nowrap",
+                                            "overflow": "hidden",
+                                            "textOverflow": "ellipsis",
+                                        }
+                                    },
+                                    "text": f"{media.get('year') or ''}  {media.get('type') or ''}".strip(),
+                                },
+                            ],
+                        },
+                    ],
+                }],
+            })
+
+        if not cards:
+            return [{
+                "component": "VAlert",
+                "props": {"type": "info", "variant": "tonal", "density": "compact"},
+                "text": "暂无可推荐内容",
+            }]
+
+        return [{
+            "component": "VRow",
+            "content": [{
+                "component": "VCol",
+                "props": {"cols": 12},
+                "content": [{
+                    "component": "VCarousel",
+                    "props": {
+                        "cycle": True,
+                        "continuous": True,
+                        "showArrows": "hover",
+                        "hideDelimiters": len(cards) <= 1,
+                        "interval": self._today_recommend_speed * 1000,
+                        "height": 220,
+                    },
+                    "content": cards,
+                }],
+            }],
+        }]
+
+    @staticmethod
+    def __build_today_recommend_link(item: Dict[str, Any]) -> str:
+        mediaid = quote(str(item.get("mediaid") or ""), safe="")
+        title = quote(str(item.get("title") or ""), safe="")
+        year = quote(str(item.get("year") or ""), safe="")
+        media_type = quote(DashboardPlus.__normalize_media_type_query(item.get("type")), safe="")
+        return f"/#/media?mediaid={mediaid}&title={title}&year={year}&type={media_type}"
+
+    @staticmethod
+    def __normalize_media_type_query(raw_type: Any) -> str:
+        value = str(raw_type or "").strip()
+        if not value:
+            return ""
+
+        normalized = value.lower()
+        movie_values = {
+            "movie", "film", "电影", "電影", "影片", "電影片", "mov"
+        }
+        tv_values = {
+            "tv", "tvshow", "series", "show", "电视剧", "電視劇", "剧集", "劇集", "连续剧", "連續劇", "综艺", "綜藝", "anime", "动画", "動畫"
+        }
+
+        if normalized in movie_values:
+            return "电影"
+        if normalized in tv_values:
+            return "电视剧"
+        return value
+
+    @staticmethod
+    def __safe_year_text(raw: Any) -> str:
+        if raw is None:
+            return ""
+        value = str(raw).strip()
+        if not value:
+            return ""
+        if len(value) >= 4 and value[:4].isdigit():
+            return value[:4]
+        return value
+
+    def __fetch_today_recommend_sources(self) -> List[dict]:
+        chain = RecommendChain()
+        items: List[dict] = []
+
+        source_calls = [
+            lambda: chain.tmdb_trending(page=1),
+            lambda: chain.douban_movie_showing(page=1, count=30),
+            lambda: chain.douban_movies(page=1, count=30),
+            lambda: chain.douban_tvs(page=1, count=30),
+        ]
+
+        for fetch_source in source_calls:
+            try:
+                items.extend(fetch_source() or [])
+            except Exception:
+                continue
+
+        return items
+
+    def __normalize_recommend_item(self, raw: dict) -> Optional[dict]:
+        if not isinstance(raw, dict):
+            return None
+
+        tmdb_id = raw.get("tmdb_id") or raw.get("tmdbid")
+        douban_id = raw.get("douban_id") or raw.get("doubanid")
+        mediaid = ""
+        if tmdb_id:
+            mediaid = f"tmdb:{tmdb_id}"
+        elif douban_id:
+            mediaid = f"douban:{douban_id}"
+
+        title = str(raw.get("title") or raw.get("name") or "").strip()
+        if not title:
+            return None
+        if not mediaid:
+            return None
+
+        year = self.__safe_year_text(raw.get("year") or raw.get("release_date") or raw.get("first_air_date"))
+        mtype = str(raw.get("type") or "").strip()
+
+        return {
+            "mediaid": mediaid,
+            "title": title,
+            "year": year,
+            "type": mtype,
+            "backdrop": raw.get("backdrop") or raw.get("backdrop_path") or "",
+            "poster": raw.get("poster") or raw.get("poster_path") or "",
+            "tmdb_id": tmdb_id,
+            "douban_id": douban_id,
+        }
+
+    def __is_media_in_library(self, item: dict) -> bool:
+        tmdb_id = item.get("tmdb_id")
+        douban_id = item.get("douban_id")
+        subscribe_oper = SubscribeOper()
+
+        if tmdb_id:
+            if subscribe_oper.exists(tmdbid=tmdb_id):
+                return True
+            if subscribe_oper.exist_history(tmdbid=tmdb_id):
+                return True
+
+        if douban_id:
+            if subscribe_oper.exists(doubanid=douban_id):
+                return True
+            if subscribe_oper.exist_history(doubanid=douban_id):
+                return True
+
+        return False
+
+    def __load_today_recommend_pool(self) -> List[dict]:
+        normalized_items: List[dict] = []
+        for raw in self.__fetch_today_recommend_sources():
+            item = self.__normalize_recommend_item(raw)
+            if item:
+                normalized_items.append(item)
+
+        unique_items: List[dict] = []
+        seen_keys = set()
+        for item in normalized_items:
+            mediaid = str(item.get("mediaid") or "").strip()
+            if mediaid:
+                dedupe_key = f"mediaid:{mediaid}"
+            else:
+                title = str(item.get("title") or "").strip().lower()
+                year = str(item.get("year") or "").strip()
+                mtype = str(item.get("type") or "").strip().lower()
+                dedupe_key = f"fallback:{title}|{year}|{mtype}"
+            if dedupe_key in seen_keys:
+                continue
+            seen_keys.add(dedupe_key)
+            unique_items.append(item)
+
+        pool: List[dict] = []
+        for item in unique_items:
+            if not self.__is_media_in_library(item):
+                pool.append(item)
+
+        shuffle(pool)
+        return pool[:self._today_recommend_count]
 
     @staticmethod
     def __format_size(size_bytes: float) -> str:
