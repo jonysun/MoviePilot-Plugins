@@ -6,7 +6,9 @@ from urllib.parse import quote
 
 from app.chain.media import MediaChain
 from app.chain.recommend import RecommendChain
+from app.core.config import settings
 from app.core.metainfo import MetaInfo
+from app.log import logger
 from app.db.models.site import Site
 from app.db.models.siteicon import SiteIcon
 from app.db.models.sitestatistic import SiteStatistic
@@ -21,7 +23,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.1"
+    plugin_version = "1.2.2"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -1626,7 +1628,14 @@ class DashboardPlus(_PluginBase):
 
     def __build_today_recommend_elements(self) -> List[dict]:
         pool = self.__load_today_recommend_pool()
-        pool = [item for item in pool if str(item.get("backdrop") or "").strip()]
+        before_backdrop_filter = len(pool)
+        pool = [item for item in pool if self.__is_usable_backdrop(item.get("backdrop"))]
+        logger.info(
+            "[dashboardplus:today_recommend] carousel candidates=%s usable_backdrop=%s dropped_no_backdrop=%s",
+            before_backdrop_filter,
+            len(pool),
+            max(0, before_backdrop_filter - len(pool)),
+        )
         if not pool:
             return [{
                 "component": "VAlert",
@@ -1777,6 +1786,34 @@ class DashboardPlus(_PluginBase):
             return value[:4]
         return value
 
+    @staticmethod
+    def __normalize_image_url(raw_url: Any) -> str:
+        url = str(raw_url or "").strip()
+        if not url:
+            return ""
+        if url.startswith("/"):
+            try:
+                return settings.TMDB_IMAGE_URL(url)
+            except Exception:
+                return ""
+        return url
+
+    @staticmethod
+    def __is_usable_backdrop(raw_url: Any) -> bool:
+        url = str(raw_url or "").strip()
+        if not url:
+            return False
+        lower_url = url.lower()
+        if not lower_url.startswith("http://") and not lower_url.startswith("https://"):
+            return False
+        bad_markers = [
+            "movie_large.jpg",
+            "tv_normal.png",
+            "tv_normal.jpg",
+            "tv_large.jpg",
+        ]
+        return not any(marker in lower_url for marker in bad_markers)
+
     def __cache_valid(self, ts: float, now_ts: Optional[float] = None) -> bool:
         try:
             current_ts = float(now_ts) if now_ts is not None else datetime.now().timestamp()
@@ -1911,7 +1948,8 @@ class DashboardPlus(_PluginBase):
                     backdrop = str(get_backdrop_image() or "").strip()
                 if not backdrop:
                     backdrop = str(getattr(mediainfo, "backdrop_path", "") or "").strip()
-                if backdrop:
+                backdrop = self.__normalize_image_url(backdrop)
+                if self.__is_usable_backdrop(backdrop):
                     self._today_banner_cache[cache_key] = {
                         "backdrop": backdrop,
                         "ts": datetime.now().timestamp(),
@@ -1977,13 +2015,16 @@ class DashboardPlus(_PluginBase):
         year = self.__safe_year_text(raw.get("year") or raw.get("release_date") or raw.get("first_air_date"))
         mtype = str(raw.get("type") or "").strip()
 
+        backdrop = self.__normalize_image_url(raw.get("backdrop") or raw.get("backdrop_path"))
+        poster = self.__normalize_image_url(raw.get("poster") or raw.get("poster_path"))
+
         return {
             "mediaid": mediaid,
             "title": title,
             "year": year,
             "type": mtype,
-            "backdrop": raw.get("backdrop") or raw.get("backdrop_path") or "",
-            "poster": raw.get("poster") or raw.get("poster_path") or "",
+            "backdrop": backdrop,
+            "poster": poster,
             "tmdb_id": tmdb_id,
             "douban_id": douban_id,
             "imdb_id": imdb_id,
@@ -1993,11 +2034,17 @@ class DashboardPlus(_PluginBase):
         tmdb_id = item.get("tmdb_id")
         douban_id = item.get("douban_id")
         subscribe_oper = SubscribeOper()
+        transfer_oper = TransferHistoryOper()
+        mtype = self.__normalize_media_type_query(item.get("type"))
+        title = str(item.get("title") or "").strip()
+        year = str(item.get("year") or "").strip()
 
         if tmdb_id:
             if subscribe_oper.exists(tmdbid=tmdb_id):
                 return True
             if subscribe_oper.exist_history(tmdbid=tmdb_id):
+                return True
+            if transfer_oper.get_by_type_tmdbid(mtype=mtype, tmdbid=tmdb_id):
                 return True
 
         if douban_id:
@@ -2006,14 +2053,22 @@ class DashboardPlus(_PluginBase):
             if subscribe_oper.exist_history(doubanid=douban_id):
                 return True
 
+        if title and year and mtype:
+            if transfer_oper.get_by(title=title, year=year, mtype=mtype):
+                return True
+
         return False
 
     def __load_today_recommend_pool(self) -> List[dict]:
+        raw_items = self.__fetch_today_recommend_sources()
+        raw_count = len(raw_items)
         normalized_items: List[dict] = []
-        for raw in self.__fetch_today_recommend_sources():
+        for raw in raw_items:
             item = self.__normalize_recommend_item(raw)
             if item and self.__match_scope_filter(item):
                 normalized_items.append(item)
+
+        normalized_count = len(normalized_items)
 
         unique_items: List[dict] = []
         seen_keys = set()
@@ -2031,15 +2086,39 @@ class DashboardPlus(_PluginBase):
             seen_keys.add(dedupe_key)
             unique_items.append(item)
 
+        unique_count = len(unique_items)
+
         pool: List[dict] = []
+        in_library_filtered = 0
         for item in unique_items:
             if not self.__is_media_in_library(item):
                 pool.append(item)
+            else:
+                in_library_filtered += 1
+
+        candidate_after_library = len(pool)
 
         shuffle(pool)
         selected = pool[:self._today_recommend_count]
 
+        logger.info(
+            "[dashboardplus:today_recommend] source_scope=%s raw=%s normalized=%s deduped=%s filtered_in_library=%s post_library=%s selected=%s",
+            self._today_recommend_source_scope,
+            raw_count,
+            normalized_count,
+            unique_count,
+            in_library_filtered,
+            candidate_after_library,
+            len(selected),
+        )
+
         if self._today_recommend_banner_policy == "existing_only":
+            missing_backdrop = sum(1 for item in selected if not self.__is_usable_backdrop(item.get("backdrop")))
+            logger.info(
+                "[dashboardplus:today_recommend] banner_policy=%s selected_missing_backdrop=%s",
+                self._today_recommend_banner_policy,
+                missing_backdrop,
+            )
             return selected
 
         filled = 0
@@ -2050,6 +2129,14 @@ class DashboardPlus(_PluginBase):
                 current = self.__ensure_banner(current)
                 filled += 1
             output.append(current)
+
+        missing_backdrop = sum(1 for item in output if not self.__is_usable_backdrop(item.get("backdrop")))
+        logger.info(
+            "[dashboardplus:today_recommend] banner_policy=%s fill_attempted=%s missing_backdrop_after_enrich=%s",
+            self._today_recommend_banner_policy,
+            filled,
+            missing_backdrop,
+        )
         return output
 
     @staticmethod
