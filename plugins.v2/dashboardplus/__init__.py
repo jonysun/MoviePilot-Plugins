@@ -24,7 +24,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.6"
+    plugin_version = "1.2.7"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -85,9 +85,13 @@ class DashboardPlus(_PluginBase):
     _today_recommend_banner_policy: str = "auto"
     _today_recommend_banner_cache_ttl: int = 43200
     _today_recommend_banner_fill_limit: int = 3
+    _today_recommend_image_fit: str = "cover"
+    _today_recommend_result_ttl: int = 600
+    _today_recommend_min_height: int = 220
     _today_banner_cache: Dict[str, Dict[str, Any]]
     _today_banner_fail_cache: Dict[str, float]
     _today_banner_cache_ops: int = 0
+    _today_result_cache: Dict[str, Dict[str, Any]]
 
     _summary_spacing: int = 8
 
@@ -188,9 +192,27 @@ class DashboardPlus(_PluginBase):
             1,
             10
         )
-        self._today_banner_cache = {}
-        self._today_banner_fail_cache = {}
-        self._today_banner_cache_ops = 0
+        self._today_recommend_result_ttl = self.__safe_refresh(
+            config.get("today_recommend_result_ttl", 600),
+            30,
+            1800
+        )
+        self._today_recommend_min_height = self.__safe_refresh(
+            config.get("today_recommend_min_height", 220),
+            160,
+            480
+        )
+        self._today_recommend_image_fit = str(config.get("today_recommend_image_fit", "cover") or "cover")
+        if self._today_recommend_image_fit not in {"cover", "contain", "fill"}:
+            self._today_recommend_image_fit = "cover"
+        if not isinstance(getattr(self, "_today_banner_cache", None), dict):
+            self._today_banner_cache = {}
+        if not isinstance(getattr(self, "_today_banner_fail_cache", None), dict):
+            self._today_banner_fail_cache = {}
+        if not isinstance(getattr(self, "_today_banner_cache_ops", None), int):
+            self._today_banner_cache_ops = 0
+        if not isinstance(getattr(self, "_today_result_cache", None), dict):
+            self._today_result_cache = {}
 
         self._cell_scale = self.__safe_scale(config.get("cell_scale", 110))
         self._cell_gap = self.__safe_refresh(config.get("cell_gap", 2), 0, 8)
@@ -725,6 +747,52 @@ class DashboardPlus(_PluginBase):
                                                     "placeholder": "3"
                                                 }
                                             }]
+                                        },
+                                            {
+                                                "component": "VCol",
+                                                "props": {"cols": 12, "md": 3},
+                                                "content": [{
+                                                    "component": "VSelect",
+                                                    "props": {
+                                                        "model": "today_recommend_image_fit",
+                                                        "label": "图片适配模式",
+                                                        "items": [
+                                                            {"title": "裁切铺满（cover）", "value": "cover"},
+                                                            {"title": "完整显示（contain）", "value": "contain"},
+                                                            {"title": "强制拉伸（fill）", "value": "fill"}
+                                                        ]
+                                                    }
+                                                }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_result_ttl",
+                                                    "label": "结果缓存TTL（秒）",
+                                                    "type": "number",
+                                                    "min": 30,
+                                                    "max": 1800,
+                                                    "placeholder": "600"
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_min_height",
+                                                    "label": "组件最低高度（160-480）",
+                                                    "type": "number",
+                                                    "min": 160,
+                                                    "max": 480,
+                                                    "placeholder": "220"
+                                                }
+                                            }]
                                         }
                                     ]
                                 }]
@@ -762,6 +830,9 @@ class DashboardPlus(_PluginBase):
             "today_recommend_banner_policy": self._today_recommend_banner_policy,
             "today_recommend_banner_cache_ttl": self._today_recommend_banner_cache_ttl,
             "today_recommend_banner_fill_limit": self._today_recommend_banner_fill_limit,
+            "today_recommend_image_fit": self._today_recommend_image_fit,
+            "today_recommend_result_ttl": self._today_recommend_result_ttl,
+            "today_recommend_min_height": self._today_recommend_min_height,
             "cell_scale": self._cell_scale,
             "cell_gap": self._cell_gap,
             "cell_radius": self._cell_radius,
@@ -1652,6 +1723,15 @@ class DashboardPlus(_PluginBase):
             }]
 
         cards: List[dict] = []
+        img_fit = "cover" if self._today_recommend_image_fit == "cover" else "contain"
+        img_style = {
+            "position": "absolute",
+            "inset": "0",
+            "width": "100%",
+            "height": "100%",
+        }
+        if self._today_recommend_image_fit == "fill":
+            img_style["objectFit"] = "fill"
         for media in pool:
             image_url = str(media.get("backdrop") or "").strip()
 
@@ -1671,13 +1751,26 @@ class DashboardPlus(_PluginBase):
                     },
                     "content": [
                         {
-                            "component": "VImg",
+                            "component": "div",
                             "props": {
-                                "src": image_url,
-                                "cover": True,
-                                "height": 220,
-                                "position": "center",
-                            },
+                                    "style": {
+                                        "position": "relative",
+                                        "width": "100%",
+                                        "height": f"{self._today_recommend_min_height}px",
+                                        "overflow": "hidden",
+                                    }
+                                },
+                            "content": [{
+                                "component": "VImg",
+                                "props": {
+                                    "src": image_url,
+                                    "cover": img_fit == "cover",
+                                    "contain": img_fit == "contain",
+                                    "eager": True,
+                                    "position": "center",
+                                    "style": img_style
+                                },
+                            }],
                         },
                         {
                             "component": "div",
@@ -1748,7 +1841,7 @@ class DashboardPlus(_PluginBase):
                         "showArrows": "hover",
                         "hideDelimiters": len(cards) <= 1,
                         "interval": self._today_recommend_speed * 1000,
-                        "height": 220,
+                        "height": self._today_recommend_min_height,
                     },
                     "content": cards,
                 }],
@@ -1871,6 +1964,23 @@ class DashboardPlus(_PluginBase):
             return (current_ts - float(ts)) < self._today_recommend_banner_cache_ttl
         except Exception:
             return False
+
+    @staticmethod
+    def __cache_valid_with_ttl(ts: float, ttl: int, now_ts: Optional[float] = None) -> bool:
+        try:
+            current_ts = float(now_ts) if now_ts is not None else datetime.now().timestamp()
+            return (current_ts - float(ts)) < int(ttl)
+        except Exception:
+            return False
+
+    def __today_result_cache_key(self) -> str:
+        return "|".join([
+            str(self._today_recommend_source_scope),
+            str(self._today_recommend_banner_policy),
+            str(self._today_recommend_count),
+            str(self._today_recommend_image_fit),
+            str(self._today_recommend_banner_fill_limit),
+        ])
 
     def __prune_banner_caches(self):
         self._today_banner_cache_ops = int(getattr(self, "_today_banner_cache_ops", 0)) + 1
@@ -2183,6 +2293,18 @@ class DashboardPlus(_PluginBase):
         return False
 
     def __load_today_recommend_pool(self) -> List[dict]:
+        cache_key = self.__today_result_cache_key()
+        cached = self._today_result_cache.get(cache_key)
+        if isinstance(cached, dict) and self.__cache_valid_with_ttl(cached.get("ts"), self._today_recommend_result_ttl):
+            cached_items = cached.get("items")
+            if isinstance(cached_items, list) and cached_items:
+                logger.info(
+                    "[dashboardplus:today_recommend] result_cache hit key=%s size=%s",
+                    cache_key,
+                    len(cached_items),
+                )
+                return cached_items
+
         raw_items = self.__fetch_today_recommend_sources()
         raw_count = len(raw_items)
         normalized_items: List[dict] = []
@@ -2246,6 +2368,10 @@ class DashboardPlus(_PluginBase):
                 self._today_recommend_banner_policy,
                 missing_backdrop,
             )
+            self._today_result_cache[cache_key] = {
+                "ts": datetime.now().timestamp(),
+                "items": selected,
+            }
             return selected
 
         filled = 0
@@ -2267,6 +2393,10 @@ class DashboardPlus(_PluginBase):
             filled,
             missing_backdrop,
         )
+        self._today_result_cache[cache_key] = {
+            "ts": datetime.now().timestamp(),
+            "items": output,
+        }
         return output
 
     @staticmethod
