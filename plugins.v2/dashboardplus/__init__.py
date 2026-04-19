@@ -27,7 +27,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.11"
+    plugin_version = "1.2.13"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -1968,12 +1968,16 @@ class DashboardPlus(_PluginBase):
         for media in pool:
             image_url = str(media.get("backdrop") or "").strip()
             image_url = self.__proxy_image_url(image_url)
+            overview = str(media.get("overview") or media.get("summary") or "").strip()
+            if not overview:
+                overview = "暂无摘要信息"
 
             cards.append({
                 "component": "VCarouselItem",
                 "content": [{
                     "component": "a",
                     "props": {
+                        "class": "dp-today-card",
                         "href": self.__build_today_recommend_link(media),
                         "style": {
                             "display": "block",
@@ -2006,6 +2010,7 @@ class DashboardPlus(_PluginBase):
                         {
                             "component": "div",
                             "props": {
+                                "class": "dp-today-title-bar",
                                 "style": {
                                     "position": "absolute",
                                     "left": "0",
@@ -2047,6 +2052,40 @@ class DashboardPlus(_PluginBase):
                                     "text": f"{media.get('year') or ''}  {media.get('type') or ''}".strip(),
                                 },
                             ],
+                        },
+                        {
+                            "component": "div",
+                            "props": {
+                                "class": "dp-today-center-zone",
+                                "style": {
+                                    "position": "absolute",
+                                    "left": "52px",
+                                    "right": "52px",
+                                    "top": "0",
+                                    "bottom": "0",
+                                },
+                            },
+                            "content": [{
+                                "component": "div",
+                                "props": {
+                                    "class": "dp-today-summary-overlay",
+                                    "style": {
+                                        "position": "absolute",
+                                        "left": "0",
+                                        "right": "0",
+                                        "bottom": "44px",
+                                        "padding": "8px 10px",
+                                        "background": "linear-gradient(180deg, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.70) 100%)",
+                                        "color": "#FFFFFF",
+                                        "fontSize": "12px",
+                                        "lineHeight": "1.35",
+                                        "maxHeight": "4.0em",
+                                        "overflow": "hidden",
+                                        "pointerEvents": "none",
+                                    },
+                                    "text": overview,
+                                },
+                            }],
                         },
                     ],
                 }],
@@ -2113,15 +2152,13 @@ class DashboardPlus(_PluginBase):
         total = len(pool)
         for index in range(total):
             current = pool[index]
-            prev_item = pool[(index - 1) % total]
-            next_item = pool[(index + 1) % total]
 
             current_url = self.__proxy_image_url(str(current.get("backdrop") or "").strip())
-            prev_url = self.__proxy_image_url(str(prev_item.get("backdrop") or "").strip())
-            next_url = self.__proxy_image_url(str(next_item.get("backdrop") or "").strip())
 
             center_text = f"{current.get('year') or ''}  {current.get('title') or ''}".strip()
             overview = str(current.get("overview") or current.get("summary") or "").strip()
+            if not overview:
+                overview = "暂无摘要信息"
 
             cards.append({
                 "component": "VCarouselItem",
@@ -2154,12 +2191,15 @@ class DashboardPlus(_PluginBase):
                                 {
                                     "component": "img",
                                     "props": {
-                                        "src": prev_url,
+                                        "src": current_url,
                                         "loading": "eager",
                                         "style": {
                                             "width": "100%",
                                             "height": "100%",
                                             "objectFit": "cover",
+                                            "transform": "scaleX(-1) scale(1.08)",
+                                            "filter": "saturate(0.8) blur(0.6px)",
+                                            "opacity": 0.9,
                                         },
                                     },
                                 },
@@ -2205,7 +2245,7 @@ class DashboardPlus(_PluginBase):
                                 {
                                     "component": "div",
                                     "props": {
-                                        "class": "dp-reflective-center-overlay",
+                                        "class": "dp-today-title-bar",
                                         "style": {
                                             "position": "absolute",
                                             "left": "0",
@@ -2214,7 +2254,6 @@ class DashboardPlus(_PluginBase):
                                             "padding": "10px 12px",
                                             "background": "linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(0,0,0,0.82) 100%)",
                                             "color": "#FFF",
-                                            "pointerEvents": "none",
                                         },
                                     },
                                     "content": [
@@ -2247,6 +2286,40 @@ class DashboardPlus(_PluginBase):
                                         },
                                     ],
                                 },
+                                {
+                                    "component": "div",
+                                    "props": {
+                                        "class": "dp-today-center-zone",
+                                        "style": {
+                                            "position": "absolute",
+                                            "left": "0",
+                                            "right": "0",
+                                            "top": "0",
+                                            "bottom": "0",
+                                        },
+                                    },
+                                    "content": [{
+                                        "component": "div",
+                                        "props": {
+                                            "class": "dp-today-summary-overlay",
+                                            "style": {
+                                                "position": "absolute",
+                                                "left": "0",
+                                                "right": "0",
+                                                "bottom": "44px",
+                                                "padding": "8px 10px",
+                                                "background": "linear-gradient(180deg, rgba(0,0,0,0.08) 0%, rgba(0,0,0,0.70) 100%)",
+                                                "color": "#FFFFFF",
+                                                "fontSize": "12px",
+                                                "lineHeight": "1.35",
+                                                "maxHeight": "4.0em",
+                                                "overflow": "hidden",
+                                                "pointerEvents": "none",
+                                            },
+                                            "text": overview,
+                                        },
+                                    }],
+                                },
                             ],
                         },
                         {
@@ -2264,12 +2337,15 @@ class DashboardPlus(_PluginBase):
                                 {
                                     "component": "img",
                                     "props": {
-                                        "src": next_url,
+                                        "src": current_url,
                                         "loading": "eager",
                                         "style": {
                                             "width": "100%",
                                             "height": "100%",
                                             "objectFit": "cover",
+                                            "transform": "scale(1.08)",
+                                            "filter": "saturate(0.8) blur(0.6px)",
+                                            "opacity": 0.9,
                                         },
                                     },
                                 },
@@ -2326,20 +2402,21 @@ class DashboardPlus(_PluginBase):
     def __today_recommend_carousel_css() -> str:
         return (
             ".dp-today-carousel .v-window__left,.dp-today-carousel .v-window__right{"
-            "background:transparent;border-radius:0;}"
+            "background:transparent !important;border-radius:0;box-shadow:none !important;}"
             ".dp-today-carousel .v-window__left .v-btn,.dp-today-carousel .v-window__right .v-btn{"
             "min-width:22px;width:22px;height:22px;border-radius:999px;"
-            "background:transparent !important;box-shadow:none !important;}"
+            "padding:0;background:transparent !important;box-shadow:none !important;opacity:0;transition:opacity .15s ease;}"
+            ".dp-today-carousel .v-window__left:hover .v-btn,.dp-today-carousel .v-window__right:hover .v-btn{opacity:1;}"
+            ".dp-today-carousel .v-window__left .v-btn::before,.dp-today-carousel .v-window__right .v-btn::before{display:none;}"
             ".dp-today-carousel .v-window__left .v-btn .v-icon,.dp-today-carousel .v-window__right .v-btn .v-icon{"
             "font-size:18px;color:#9155FD !important;}"
             ".dp-reflective-carousel .v-window__left,.dp-reflective-carousel .v-window__right{"
-            "top:0;height:100%;margin-top:0;transform:none;opacity:0;transition:opacity .18s ease;"
+            "top:0;height:100%;margin-top:0;transform:none;"
             "pointer-events:auto;}"
             ".dp-reflective-carousel .v-window__left{left:0;width:var(--dp-left-zone);justify-content:flex-start;padding-left:8px;}"
             ".dp-reflective-carousel .v-window__right{right:0;width:var(--dp-right-zone);justify-content:flex-end;padding-right:8px;}"
-            ".dp-reflective-carousel .v-window__left:hover,.dp-reflective-carousel .v-window__right:hover{opacity:1;}"
-            ".dp-reflective-carousel .dp-reflective-center .dp-reflective-center-overlay{opacity:0;transition:opacity .22s ease;}"
-            ".dp-reflective-carousel .dp-reflective-center:hover .dp-reflective-center-overlay{opacity:1 !important;}"
+            ".dp-today-carousel .dp-today-summary-overlay{opacity:0;transition:opacity .2s ease;}"
+            ".dp-today-carousel .dp-today-center-zone:hover .dp-today-summary-overlay{opacity:1;}"
         )
 
     @staticmethod
@@ -2380,6 +2457,17 @@ class DashboardPlus(_PluginBase):
         if len(value) >= 4 and value[:4].isdigit():
             return value[:4]
         return value
+
+    @staticmethod
+    def __extract_overview(raw: dict) -> str:
+        if not isinstance(raw, dict):
+            return ""
+        keys = ["overview", "summary", "description", "intro", "content", "subtitle"]
+        for key in keys:
+            value = str(raw.get(key) or "").strip()
+            if value:
+                return value
+        return ""
 
     @staticmethod
     def __normalize_image_url(raw_url: Any) -> str:
@@ -2856,6 +2944,7 @@ class DashboardPlus(_PluginBase):
             "title": title,
             "year": year,
             "type": mtype,
+            "overview": self.__extract_overview(raw),
             "backdrop": backdrop,
             "poster": poster,
             "tmdb_id": tmdb_id,
