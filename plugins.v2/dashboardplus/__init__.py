@@ -27,7 +27,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.8"
+    plugin_version = "1.2.9"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -830,9 +830,9 @@ class DashboardPlus(_PluginBase):
                                                         "model": "today_recommend_image_fit",
                                                         "label": "图片适配模式",
                                                         "items": [
-                                                            {"title": "自动拉伸铺满（可能裁切）", "value": "auto"},
-                                                            {"title": "裁切铺满（cover）", "value": "cover"},
-                                                            {"title": "完整显示（可能留白）", "value": "contain"},
+                                                            {"title": "自动拉伸铺满（不裁切）", "value": "auto"},
+                                                            {"title": "自动裁切铺满（cover）", "value": "cover"},
+                                                            {"title": "完整显示（不放大）", "value": "contain"},
                                                             {"title": "强制拉伸（可能变形）", "value": "fill"}
                                                         ]
                                                     }
@@ -1846,15 +1846,19 @@ class DashboardPlus(_PluginBase):
         cards: List[dict] = []
         fit_mode = self._today_recommend_image_fit
         if fit_mode == "auto":
-            fit_mode = "cover"
-        img_style = {
+            # Auto stretch-fill (no crop): keep full image visible, may leave padding.
+            fit_mode = "contain"
+        elif fit_mode == "contain":
+            # Keep original ratio and avoid enlarging when image is smaller.
+            fit_mode = "scale-down"
+        img_style: Dict[str, Any] = {
             "position": "absolute",
             "inset": "0",
             "width": "100%",
             "height": "100%",
+            "objectFit": fit_mode,
+            "objectPosition": "center",
         }
-        if fit_mode == "fill":
-            img_style["objectFit"] = "fill"
         for media in pool:
             image_url = str(media.get("backdrop") or "").strip()
             image_url = self.__proxy_image_url(image_url)
@@ -1883,15 +1887,12 @@ class DashboardPlus(_PluginBase):
                                         "height": f"{self._today_recommend_min_height}px",
                                         "overflow": "hidden",
                                     }
-                                },
+                            },
                             "content": [{
-                                "component": "VImg",
+                                "component": "img",
                                 "props": {
                                     "src": image_url,
-                                    "cover": fit_mode == "cover",
-                                    "contain": fit_mode == "contain",
-                                    "eager": True,
-                                    "position": "center",
+                                    "loading": "eager",
                                     "style": img_style
                                 },
                             }],
