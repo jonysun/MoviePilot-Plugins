@@ -27,7 +27,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.10"
+    plugin_version = "1.2.11"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -2064,18 +2064,25 @@ class DashboardPlus(_PluginBase):
             "content": [{
                 "component": "VCol",
                 "props": {"cols": 12},
-                "content": [{
-                    "component": "VCarousel",
-                    "props": {
-                        "cycle": True,
-                        "continuous": True,
-                        "showArrows": "hover",
-                        "hideDelimiters": len(cards) <= 1,
-                        "interval": self._today_recommend_speed * 1000,
-                        "height": self._today_recommend_min_height,
+                "content": [
+                    {
+                        "component": "style",
+                        "text": self.__today_recommend_carousel_css(),
                     },
-                    "content": cards,
-                }],
+                    {
+                        "component": "VCarousel",
+                        "props": {
+                            "class": "dp-today-carousel dp-today-carousel-classic",
+                            "cycle": True,
+                            "continuous": True,
+                            "showArrows": "hover",
+                            "hideDelimiters": len(cards) <= 1,
+                            "interval": self._today_recommend_speed * 1000,
+                            "height": self._today_recommend_min_height,
+                        },
+                        "content": cards,
+                    }
+                ],
             }],
         }]
 
@@ -2162,7 +2169,7 @@ class DashboardPlus(_PluginBase):
                                         "style": {
                                             "position": "absolute",
                                             "inset": "0",
-                                            "background": "linear-gradient(90deg, rgba(255,255,255,0.72) 0%, rgba(255,255,255,0.15) 100%)",
+                                            "background": "linear-gradient(90deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.16) 62%, rgba(0,0,0,0) 100%)",
                                         },
                                     },
                                 },
@@ -2207,8 +2214,6 @@ class DashboardPlus(_PluginBase):
                                             "padding": "10px 12px",
                                             "background": "linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(0,0,0,0.82) 100%)",
                                             "color": "#FFF",
-                                            "opacity": 0,
-                                            "transition": "opacity 0.22s ease",
                                             "pointerEvents": "none",
                                         },
                                     },
@@ -2274,7 +2279,7 @@ class DashboardPlus(_PluginBase):
                                         "style": {
                                             "position": "absolute",
                                             "inset": "0",
-                                            "background": "linear-gradient(270deg, rgba(255,255,255,0.72) 0%, rgba(255,255,255,0.15) 100%)",
+                                            "background": "linear-gradient(270deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.16) 62%, rgba(0,0,0,0) 100%)",
                                         },
                                     },
                                 },
@@ -2284,18 +2289,6 @@ class DashboardPlus(_PluginBase):
                 }],
             })
 
-        css_block = (
-            ".dp-reflective-carousel .v-window__left,.dp-reflective-carousel .v-window__right{"
-            "top:0;height:100%;margin-top:0;transform:none;border-radius:0;"
-            "opacity:0;transition:opacity .18s ease;background:rgba(0,0,0,0.16);}"
-            ".dp-reflective-carousel .v-window__left{left:0;width:var(--dp-left-zone);justify-content:flex-start;padding-left:10px;}"
-            ".dp-reflective-carousel .v-window__right{right:0;width:var(--dp-right-zone);justify-content:flex-end;padding-right:10px;}"
-            ".dp-reflective-carousel .v-window__left:hover,.dp-reflective-carousel .v-window__right:hover{opacity:1;}"
-            ".dp-reflective-carousel .v-window__left .v-btn,.dp-reflective-carousel .v-window__right .v-btn{"
-            "background:rgba(0,0,0,0.35);color:#fff;}"
-            ".dp-reflective-carousel .dp-reflective-center:hover .dp-reflective-center-overlay{opacity:1;}"
-        )
-
         return [{
             "component": "VRow",
             "content": [{
@@ -2304,12 +2297,12 @@ class DashboardPlus(_PluginBase):
                 "content": [
                     {
                         "component": "style",
-                        "text": css_block,
+                        "text": self.__today_recommend_carousel_css(),
                     },
                     {
                         "component": "VCarousel",
                         "props": {
-                            "class": "dp-reflective-carousel",
+                            "class": "dp-today-carousel dp-reflective-carousel",
                             "cycle": True,
                             "continuous": True,
                             "showArrows": "hover",
@@ -2328,6 +2321,26 @@ class DashboardPlus(_PluginBase):
                 ],
             }],
         }]
+
+    @staticmethod
+    def __today_recommend_carousel_css() -> str:
+        return (
+            ".dp-today-carousel .v-window__left,.dp-today-carousel .v-window__right{"
+            "background:transparent;border-radius:0;}"
+            ".dp-today-carousel .v-window__left .v-btn,.dp-today-carousel .v-window__right .v-btn{"
+            "min-width:22px;width:22px;height:22px;border-radius:999px;"
+            "background:transparent !important;box-shadow:none !important;}"
+            ".dp-today-carousel .v-window__left .v-btn .v-icon,.dp-today-carousel .v-window__right .v-btn .v-icon{"
+            "font-size:18px;color:#9155FD !important;}"
+            ".dp-reflective-carousel .v-window__left,.dp-reflective-carousel .v-window__right{"
+            "top:0;height:100%;margin-top:0;transform:none;opacity:0;transition:opacity .18s ease;"
+            "pointer-events:auto;}"
+            ".dp-reflective-carousel .v-window__left{left:0;width:var(--dp-left-zone);justify-content:flex-start;padding-left:8px;}"
+            ".dp-reflective-carousel .v-window__right{right:0;width:var(--dp-right-zone);justify-content:flex-end;padding-right:8px;}"
+            ".dp-reflective-carousel .v-window__left:hover,.dp-reflective-carousel .v-window__right:hover{opacity:1;}"
+            ".dp-reflective-carousel .dp-reflective-center .dp-reflective-center-overlay{opacity:0;transition:opacity .22s ease;}"
+            ".dp-reflective-carousel .dp-reflective-center:hover .dp-reflective-center-overlay{opacity:1 !important;}"
+        )
 
     @staticmethod
     def __build_today_recommend_link(item: Dict[str, Any]) -> str:
