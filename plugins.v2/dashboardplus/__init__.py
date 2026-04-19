@@ -27,7 +27,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.13"
+    plugin_version = "1.2.14"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -95,6 +95,9 @@ class DashboardPlus(_PluginBase):
     _today_recommend_reflective_ratio_left: int = 15
     _today_recommend_reflective_ratio_center: int = 70
     _today_recommend_reflective_ratio_right: int = 15
+    _today_recommend_reflective_blur_px: float = 1.1
+    _today_recommend_reflective_brightness: int = 82
+    _today_recommend_reflective_gradient_strength: int = 62
     _today_recommend_use_prewarm_pool: bool = True
     _today_recommend_prewarm_time: str = "08:00"
     _today_recommend_pool_size: int = 30
@@ -231,6 +234,22 @@ class DashboardPlus(_PluginBase):
             reflective_ratio_left,
             reflective_ratio_center,
             reflective_ratio_right,
+        )
+        self._today_recommend_reflective_blur_px = self.__safe_float_range(
+            config.get("today_recommend_reflective_blur_px", 1.1),
+            0.0,
+            4.0,
+            1.1,
+        )
+        self._today_recommend_reflective_brightness = self.__safe_refresh(
+            config.get("today_recommend_reflective_brightness", 82),
+            50,
+            100,
+        )
+        self._today_recommend_reflective_gradient_strength = self.__safe_refresh(
+            config.get("today_recommend_reflective_gradient_strength", 62),
+            30,
+            90,
         )
         self._today_recommend_image_fit = str(config.get("today_recommend_image_fit", "auto") or "auto")
         if self._today_recommend_image_fit not in {"auto", "cover", "contain", "fill"}:
@@ -804,6 +823,56 @@ class DashboardPlus(_PluginBase):
                                             "component": "VCol",
                                             "props": {"cols": 12, "md": 4},
                                             "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_reflective_blur_px",
+                                                    "label": "反射倒影模糊（0-4）",
+                                                    "type": "number",
+                                                    "min": 0,
+                                                    "max": 4,
+                                                    "step": 0.1,
+                                                    "placeholder": "1.1"
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 4},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_reflective_brightness",
+                                                    "label": "反射亮度（50-100%）",
+                                                    "type": "number",
+                                                    "min": 50,
+                                                    "max": 100,
+                                                    "placeholder": "82"
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 4},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_reflective_gradient_strength",
+                                                    "label": "反射渐变强度（30-90）",
+                                                    "type": "number",
+                                                    "min": 30,
+                                                    "max": 90,
+                                                    "placeholder": "62"
+                                                }
+                                            }]
+                                        }
+                                    ]
+                                }, {
+                                    "component": "VRow",
+                                    "content": [
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 4},
+                                            "content": [{
                                                 "component": "VSwitch",
                                                 "props": {
                                                     "model": "today_recommend_use_prewarm_pool",
@@ -997,6 +1066,9 @@ class DashboardPlus(_PluginBase):
             "today_recommend_reflective_ratio_left": self._today_recommend_reflective_ratio_left,
             "today_recommend_reflective_ratio_center": self._today_recommend_reflective_ratio_center,
             "today_recommend_reflective_ratio_right": self._today_recommend_reflective_ratio_right,
+            "today_recommend_reflective_blur_px": self._today_recommend_reflective_blur_px,
+            "today_recommend_reflective_brightness": self._today_recommend_reflective_brightness,
+            "today_recommend_reflective_gradient_strength": self._today_recommend_reflective_gradient_strength,
             "cell_scale": self._cell_scale,
             "cell_gap": self._cell_gap,
             "cell_radius": self._cell_radius,
@@ -1130,6 +1202,18 @@ class DashboardPlus(_PluginBase):
             return value
         except Exception:
             return 4.0
+
+    @staticmethod
+    def __safe_float_range(raw_value: Any, min_value: float, max_value: float, default: float) -> float:
+        try:
+            value = float(raw_value)
+            if value < min_value:
+                return float(min_value)
+            if value > max_value:
+                return float(max_value)
+            return value
+        except Exception:
+            return float(default)
 
     @staticmethod
     def __safe_color(raw_value: Any, default: str) -> str:
@@ -2148,6 +2232,10 @@ class DashboardPlus(_PluginBase):
             center,
             right,
         )
+        mirror_blur_px = self._today_recommend_reflective_blur_px
+        mirror_brightness = max(0.5, min(1.0, self._today_recommend_reflective_brightness / 100.0))
+        gradient_main = max(0.30, min(0.90, self._today_recommend_reflective_gradient_strength / 100.0))
+        gradient_mid = max(0.08, min(0.45, gradient_main * 0.35))
         cards: List[dict] = []
         total = len(pool)
         for index in range(total):
@@ -2197,9 +2285,10 @@ class DashboardPlus(_PluginBase):
                                             "width": "100%",
                                             "height": "100%",
                                             "objectFit": "cover",
-                                            "transform": "scaleX(-1) scale(1.08)",
-                                            "filter": "saturate(0.8) blur(0.6px)",
-                                            "opacity": 0.9,
+                                            "objectPosition": "right center",
+                                            "transform": "scaleX(-1) scale(1.18)",
+                                            "filter": f"saturate(0.72) blur({mirror_blur_px:.2f}px) brightness({mirror_brightness:.2f})",
+                                            "opacity": 0.88,
                                         },
                                     },
                                 },
@@ -2209,7 +2298,7 @@ class DashboardPlus(_PluginBase):
                                         "style": {
                                             "position": "absolute",
                                             "inset": "0",
-                                            "background": "linear-gradient(90deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.16) 62%, rgba(0,0,0,0) 100%)",
+                                            "background": f"linear-gradient(90deg, rgba(0,0,0,{gradient_main:.2f}) 0%, rgba(0,0,0,{gradient_mid:.2f}) 58%, rgba(0,0,0,0) 100%)",
                                         },
                                     },
                                 },
@@ -2274,15 +2363,16 @@ class DashboardPlus(_PluginBase):
                                             "component": "div",
                                             "props": {
                                                 "style": {
-                                                    "marginTop": "3px",
+                                                    "marginTop": "4px",
                                                     "fontSize": "12px",
-                                                    "lineHeight": "1.3",
-                                                    "opacity": 0.95,
-                                                    "maxHeight": "2.6em",
+                                                    "lineHeight": "1.2",
+                                                    "opacity": 0.9,
+                                                    "whiteSpace": "nowrap",
                                                     "overflow": "hidden",
+                                                    "textOverflow": "ellipsis",
                                                 },
                                             },
-                                            "text": overview,
+                                            "text": str(current.get("type") or ""),
                                         },
                                     ],
                                 },
@@ -2292,8 +2382,8 @@ class DashboardPlus(_PluginBase):
                                         "class": "dp-today-center-zone",
                                         "style": {
                                             "position": "absolute",
-                                            "left": "0",
-                                            "right": "0",
+                                            "left": "52px",
+                                            "right": "52px",
                                             "top": "0",
                                             "bottom": "0",
                                         },
@@ -2343,9 +2433,10 @@ class DashboardPlus(_PluginBase):
                                             "width": "100%",
                                             "height": "100%",
                                             "objectFit": "cover",
-                                            "transform": "scale(1.08)",
-                                            "filter": "saturate(0.8) blur(0.6px)",
-                                            "opacity": 0.9,
+                                            "objectPosition": "left center",
+                                            "transform": "scaleX(-1) scale(1.18)",
+                                            "filter": f"saturate(0.72) blur({mirror_blur_px:.2f}px) brightness({mirror_brightness:.2f})",
+                                            "opacity": 0.88,
                                         },
                                     },
                                 },
@@ -2355,7 +2446,7 @@ class DashboardPlus(_PluginBase):
                                         "style": {
                                             "position": "absolute",
                                             "inset": "0",
-                                            "background": "linear-gradient(270deg, rgba(0,0,0,0.5) 0%, rgba(0,0,0,0.16) 62%, rgba(0,0,0,0) 100%)",
+                                            "background": f"linear-gradient(270deg, rgba(0,0,0,{gradient_main:.2f}) 0%, rgba(0,0,0,{gradient_mid:.2f}) 58%, rgba(0,0,0,0) 100%)",
                                         },
                                     },
                                 },
@@ -2388,8 +2479,6 @@ class DashboardPlus(_PluginBase):
                             "style": {
                                 "borderRadius": "10px",
                                 "overflow": "hidden",
-                                "--dp-left-zone": f"{left}%",
-                                "--dp-right-zone": f"{right}%",
                             },
                         },
                         "content": cards,
@@ -2402,19 +2491,20 @@ class DashboardPlus(_PluginBase):
     def __today_recommend_carousel_css() -> str:
         return (
             ".dp-today-carousel .v-window__left,.dp-today-carousel .v-window__right{"
-            "background:transparent !important;border-radius:0;box-shadow:none !important;}"
+            "top:0;height:100%;margin-top:0;transform:none;width:52px;"
+            "background:transparent !important;border-radius:0;box-shadow:none !important;"
+            "pointer-events:auto;}"
+            ".dp-today-carousel .v-window__left{left:0;justify-content:flex-start;padding-left:8px;}"
+            ".dp-today-carousel .v-window__right{right:0;justify-content:flex-end;padding-right:8px;}"
             ".dp-today-carousel .v-window__left .v-btn,.dp-today-carousel .v-window__right .v-btn{"
             "min-width:22px;width:22px;height:22px;border-radius:999px;"
             "padding:0;background:transparent !important;box-shadow:none !important;opacity:0;transition:opacity .15s ease;}"
             ".dp-today-carousel .v-window__left:hover .v-btn,.dp-today-carousel .v-window__right:hover .v-btn{opacity:1;}"
-            ".dp-today-carousel .v-window__left .v-btn::before,.dp-today-carousel .v-window__right .v-btn::before{display:none;}"
+            ".dp-today-carousel .v-window__left .v-btn::before,.dp-today-carousel .v-window__right .v-btn::before,"
+            ".dp-today-carousel .v-window__left .v-btn .v-btn__overlay,.dp-today-carousel .v-window__right .v-btn .v-btn__overlay,"
+            ".dp-today-carousel .v-window__left .v-btn .v-btn__underlay,.dp-today-carousel .v-window__right .v-btn .v-btn__underlay{display:none !important;}"
             ".dp-today-carousel .v-window__left .v-btn .v-icon,.dp-today-carousel .v-window__right .v-btn .v-icon{"
             "font-size:18px;color:#9155FD !important;}"
-            ".dp-reflective-carousel .v-window__left,.dp-reflective-carousel .v-window__right{"
-            "top:0;height:100%;margin-top:0;transform:none;"
-            "pointer-events:auto;}"
-            ".dp-reflective-carousel .v-window__left{left:0;width:var(--dp-left-zone);justify-content:flex-start;padding-left:8px;}"
-            ".dp-reflective-carousel .v-window__right{right:0;width:var(--dp-right-zone);justify-content:flex-end;padding-right:8px;}"
             ".dp-today-carousel .dp-today-summary-overlay{opacity:0;transition:opacity .2s ease;}"
             ".dp-today-carousel .dp-today-center-zone:hover .dp-today-summary-overlay{opacity:1;}"
         )
