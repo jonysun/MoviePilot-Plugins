@@ -1,9 +1,12 @@
 import math
 import re
+import threading
 from random import shuffle
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
+from urllib.parse import quote as url_quote
+from apscheduler.triggers.cron import CronTrigger
 
 from app.chain.media import MediaChain
 from app.chain.recommend import RecommendChain
@@ -24,7 +27,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.7"
+    plugin_version = "1.2.8"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -88,6 +91,14 @@ class DashboardPlus(_PluginBase):
     _today_recommend_image_fit: str = "cover"
     _today_recommend_result_ttl: int = 600
     _today_recommend_min_height: int = 220
+    _today_recommend_use_prewarm_pool: bool = True
+    _today_recommend_prewarm_time: str = "08:00"
+    _today_recommend_pool_size: int = 30
+    _today_recommend_pool_cache: Dict[str, Any]
+    _today_pool_refresh_lock: threading.Lock
+    _today_pool_refreshing: bool = False
+    _today_pool_last_failed_at: float = 0.0
+    _today_pool_failure_backoff: int = 60
     _today_banner_cache: Dict[str, Dict[str, Any]]
     _today_banner_fail_cache: Dict[str, float]
     _today_banner_cache_ops: int = 0
@@ -202,9 +213,20 @@ class DashboardPlus(_PluginBase):
             160,
             480
         )
-        self._today_recommend_image_fit = str(config.get("today_recommend_image_fit", "cover") or "cover")
-        if self._today_recommend_image_fit not in {"cover", "contain", "fill"}:
-            self._today_recommend_image_fit = "cover"
+        self._today_recommend_image_fit = str(config.get("today_recommend_image_fit", "auto") or "auto")
+        if self._today_recommend_image_fit not in {"auto", "cover", "contain", "fill"}:
+            self._today_recommend_image_fit = "auto"
+        self._today_recommend_use_prewarm_pool = self.__to_bool(
+            config.get("today_recommend_use_prewarm_pool", True),
+            default=True
+        )
+        raw_prewarm_time = str(config.get("today_recommend_prewarm_time", "08:00") or "08:00").strip()
+        self._today_recommend_prewarm_time = self.__normalize_hhmm(raw_prewarm_time)
+        self._today_recommend_pool_size = self.__safe_refresh(
+            config.get("today_recommend_pool_size", 30),
+            10,
+            200
+        )
         if not isinstance(getattr(self, "_today_banner_cache", None), dict):
             self._today_banner_cache = {}
         if not isinstance(getattr(self, "_today_banner_fail_cache", None), dict):
@@ -213,6 +235,15 @@ class DashboardPlus(_PluginBase):
             self._today_banner_cache_ops = 0
         if not isinstance(getattr(self, "_today_result_cache", None), dict):
             self._today_result_cache = {}
+        if not isinstance(getattr(self, "_today_recommend_pool_cache", None), dict):
+            self._today_recommend_pool_cache = {}
+        lock_obj = getattr(self, "_today_pool_refresh_lock", None)
+        if lock_obj is None or not hasattr(lock_obj, "acquire"):
+            self._today_pool_refresh_lock = threading.Lock()
+        if not isinstance(getattr(self, "_today_pool_refreshing", None), bool):
+            self._today_pool_refreshing = False
+        if not isinstance(getattr(self, "_today_pool_last_failed_at", None), (int, float)):
+            self._today_pool_last_failed_at = 0.0
 
         self._cell_scale = self.__safe_scale(config.get("cell_scale", 110))
         self._cell_gap = self.__safe_refresh(config.get("cell_gap", 2), 0, 8)
@@ -688,6 +719,48 @@ class DashboardPlus(_PluginBase):
                                     "content": [
                                         {
                                             "component": "VCol",
+                                            "props": {"cols": 12, "md": 4},
+                                            "content": [{
+                                                "component": "VSwitch",
+                                                "props": {
+                                                    "model": "today_recommend_use_prewarm_pool",
+                                                    "label": "启用预热池"
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 4},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_prewarm_time",
+                                                    "label": "预热时间（HH:MM）",
+                                                    "placeholder": "08:00"
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 4},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_pool_size",
+                                                    "label": "预热池总数（10-200）",
+                                                    "type": "number",
+                                                    "min": 10,
+                                                    "max": 200,
+                                                    "placeholder": "30"
+                                                }
+                                            }]
+                                        }
+                                    ]
+                                }, {
+                                    "component": "VRow",
+                                    "content": [
+                                        {
+                                            "component": "VCol",
                                             "props": {"cols": 12, "md": 3},
                                             "content": [{
                                                 "component": "VSelect",
@@ -757,13 +830,14 @@ class DashboardPlus(_PluginBase):
                                                         "model": "today_recommend_image_fit",
                                                         "label": "图片适配模式",
                                                         "items": [
+                                                            {"title": "自动拉伸铺满（可能裁切）", "value": "auto"},
                                                             {"title": "裁切铺满（cover）", "value": "cover"},
-                                                            {"title": "完整显示（contain）", "value": "contain"},
-                                                            {"title": "强制拉伸（fill）", "value": "fill"}
+                                                            {"title": "完整显示（可能留白）", "value": "contain"},
+                                                            {"title": "强制拉伸（可能变形）", "value": "fill"}
                                                         ]
                                                     }
                                                 }]
-                                        },
+                                            },
                                         {
                                             "component": "VCol",
                                             "props": {"cols": 12, "md": 3},
@@ -826,6 +900,9 @@ class DashboardPlus(_PluginBase):
             "today_recommend_size": self._today_recommend_size,
             "today_recommend_count": self._today_recommend_count,
             "today_recommend_speed": self._today_recommend_speed,
+            "today_recommend_use_prewarm_pool": self._today_recommend_use_prewarm_pool,
+            "today_recommend_prewarm_time": self._today_recommend_prewarm_time,
+            "today_recommend_pool_size": self._today_recommend_pool_size,
             "today_recommend_source_scope": self._today_recommend_source_scope,
             "today_recommend_banner_policy": self._today_recommend_banner_policy,
             "today_recommend_banner_cache_ttl": self._today_recommend_banner_cache_ttl,
@@ -915,6 +992,30 @@ class DashboardPlus(_PluginBase):
     def stop_service(self):
         pass
 
+    def get_service(self) -> List[Dict[str, Any]]:
+        if not self._enabled or not self._today_recommend_use_prewarm_pool:
+            return []
+        try:
+            hour_text, minute_text = self._today_recommend_prewarm_time.split(":", 1)
+            hour = int(hour_text)
+            minute = int(minute_text)
+        except Exception:
+            hour = 8
+            minute = 0
+        return [{
+            "id": "DashboardPlusTodayRecommendPrewarm",
+            "name": "今日推荐预热池刷新服务",
+            "trigger": CronTrigger(hour=hour, minute=minute),
+            "func": self.__scheduled_prewarm_today_pool,
+            "kwargs": {},
+        }]
+
+    def __scheduled_prewarm_today_pool(self):
+        try:
+            self.__refresh_today_pool_if_needed(force=True)
+        except Exception as err:
+            logger.warning("[dashboardplus:today_recommend] scheduled prewarm failed: %s", str(err))
+
     @staticmethod
     def __safe_refresh(raw_value: Any, min_value: int, max_value: int) -> int:
         try:
@@ -968,6 +1069,18 @@ class DashboardPlus(_PluginBase):
         if isinstance(value, str):
             return value.strip().lower() in {"1", "true", "yes", "on"}
         return bool(value)
+
+    @staticmethod
+    def __normalize_hhmm(value: str) -> str:
+        raw = str(value or "").strip()
+        matched = re.match(r"^(\d{1,2}):(\d{1,2})$", raw)
+        if not matched:
+            return "08:00"
+        hours = int(matched.group(1))
+        minutes = int(matched.group(2))
+        if hours < 0 or hours > 23 or minutes < 0 or minutes > 59:
+            return "08:00"
+        return f"{hours:02d}:{minutes:02d}"
 
     def __build_calendar_grid(self, days: int) -> Dict[str, Any]:
         end_date = date.today()
@@ -1699,7 +1812,15 @@ class DashboardPlus(_PluginBase):
         }]
 
     def __build_today_recommend_elements(self) -> List[dict]:
-        pool = self.__load_today_recommend_pool()
+        if self._today_recommend_use_prewarm_pool:
+            self.__refresh_today_pool_if_needed()
+            pool = self.__pick_today_pool_items()
+            logger.info(
+                "[dashboardplus:today_recommend] render uses prewarm pool sampled=%s",
+                len(pool),
+            )
+        else:
+            pool = self.__load_today_recommend_pool()
         for sample in pool[:5]:
             logger.debug(
                 "[dashboardplus:today_recommend] selected_sample mediaid=%s title=%s backdrop=%s",
@@ -1723,17 +1844,20 @@ class DashboardPlus(_PluginBase):
             }]
 
         cards: List[dict] = []
-        img_fit = "cover" if self._today_recommend_image_fit == "cover" else "contain"
+        fit_mode = self._today_recommend_image_fit
+        if fit_mode == "auto":
+            fit_mode = "cover"
         img_style = {
             "position": "absolute",
             "inset": "0",
             "width": "100%",
             "height": "100%",
         }
-        if self._today_recommend_image_fit == "fill":
+        if fit_mode == "fill":
             img_style["objectFit"] = "fill"
         for media in pool:
             image_url = str(media.get("backdrop") or "").strip()
+            image_url = self.__proxy_image_url(image_url)
 
             cards.append({
                 "component": "VCarouselItem",
@@ -1764,8 +1888,8 @@ class DashboardPlus(_PluginBase):
                                 "component": "VImg",
                                 "props": {
                                     "src": image_url,
-                                    "cover": img_fit == "cover",
-                                    "contain": img_fit == "contain",
+                                    "cover": fit_mode == "cover",
+                                    "contain": fit_mode == "contain",
                                     "eager": True,
                                     "position": "center",
                                     "style": img_style
@@ -1900,6 +2024,15 @@ class DashboardPlus(_PluginBase):
         return url
 
     @staticmethod
+    def __proxy_image_url(raw_url: Any) -> str:
+        url = str(raw_url or "").strip()
+        if not url:
+            return ""
+        if url.startswith("/system/img") or url.startswith("/system/cache/image"):
+            return url
+        return f"/api/v1/system/cache/image?url={url_quote(url, safe='')}"
+
+    @staticmethod
     def __is_usable_backdrop(raw_url: Any) -> bool:
         url = str(raw_url or "").strip()
         if not url:
@@ -1981,6 +2114,104 @@ class DashboardPlus(_PluginBase):
             str(self._today_recommend_image_fit),
             str(self._today_recommend_banner_fill_limit),
         ])
+
+    def __today_next_refresh_ts(self, now_dt: datetime) -> float:
+        try:
+            hour, minute = self._today_recommend_prewarm_time.split(":", 1)
+            target = now_dt.replace(hour=int(hour), minute=int(minute), second=0, microsecond=0)
+            if target <= now_dt:
+                target = target + timedelta(days=1)
+            return target.timestamp()
+        except Exception:
+            fallback = now_dt.replace(hour=8, minute=0, second=0, microsecond=0)
+            if fallback <= now_dt:
+                fallback = fallback + timedelta(days=1)
+            return fallback.timestamp()
+
+    def __today_pool_expired(self) -> bool:
+        cache = self._today_recommend_pool_cache if isinstance(self._today_recommend_pool_cache, dict) else {}
+        items = cache.get("items") if isinstance(cache, dict) else None
+        if not isinstance(items, list) or not items:
+            return True
+        next_refresh_at = cache.get("next_refresh_at")
+        if not isinstance(next_refresh_at, (int, float)):
+            return True
+        return datetime.now().timestamp() >= float(next_refresh_at)
+
+    def __build_today_prewarm_pool(self) -> List[dict]:
+        return self.__load_today_recommend_pool(target_count=self._today_recommend_pool_size, use_result_cache=False)
+
+    def __refresh_today_pool_if_needed(self, force: bool = False):
+        if not self._today_recommend_use_prewarm_pool:
+            return
+        now_dt = datetime.now()
+        now_ts = now_dt.timestamp()
+
+        # fast-path checks
+        if not force and not self.__today_pool_expired():
+            return
+        if self._today_pool_refreshing:
+            return
+        if not force and self._today_pool_last_failed_at and (now_ts - self._today_pool_last_failed_at) < self._today_pool_failure_backoff:
+            return
+
+        with self._today_pool_refresh_lock:
+            # double-check after acquiring lock
+            now_dt = datetime.now()
+            now_ts = now_dt.timestamp()
+            if self._today_pool_refreshing:
+                return
+            if not force and not self.__today_pool_expired():
+                return
+            if not force and self._today_pool_last_failed_at and (now_ts - self._today_pool_last_failed_at) < self._today_pool_failure_backoff:
+                return
+
+            self._today_pool_refreshing = True
+            logger.info("[dashboardplus:today_recommend] prewarm start force=%s", force)
+            start_ts = now_ts
+            old_cache = dict(self._today_recommend_pool_cache) if isinstance(self._today_recommend_pool_cache, dict) else {}
+            try:
+                items = self.__build_today_prewarm_pool()
+                if items:
+                    next_refresh = self.__today_next_refresh_ts(now_dt)
+                    self._today_recommend_pool_cache = {
+                        "generated_at": start_ts,
+                        "next_refresh_at": next_refresh,
+                        "items": items,
+                    }
+                    self._today_pool_last_failed_at = 0.0
+                    cost_ms = int((datetime.now().timestamp() - start_ts) * 1000)
+                    logger.info(
+                        "[dashboardplus:today_recommend] prewarm done size=%s cost=%sms next_refresh_at=%s",
+                        len(items),
+                        cost_ms,
+                        datetime.fromtimestamp(next_refresh).strftime("%Y-%m-%d %H:%M:%S"),
+                    )
+                else:
+                    logger.warning("[dashboardplus:today_recommend] prewarm produced empty pool, keeping old cache")
+                    self._today_recommend_pool_cache = old_cache
+                    self._today_pool_last_failed_at = datetime.now().timestamp()
+            except Exception as err:
+                self._today_recommend_pool_cache = old_cache
+                self._today_pool_last_failed_at = datetime.now().timestamp()
+                logger.warning("[dashboardplus:today_recommend] prewarm failed, keep old pool: %s", str(err))
+            finally:
+                self._today_pool_refreshing = False
+
+    def __pick_today_pool_items(self) -> List[dict]:
+        cache = self._today_recommend_pool_cache if isinstance(self._today_recommend_pool_cache, dict) else {}
+        items = cache.get("items") if isinstance(cache, dict) else None
+        if not isinstance(items, list) or not items:
+            # startup fallback
+            self.__refresh_today_pool_if_needed(force=True)
+            cache = self._today_recommend_pool_cache if isinstance(self._today_recommend_pool_cache, dict) else {}
+            items = cache.get("items") if isinstance(cache, dict) else None
+            if not isinstance(items, list) or not items:
+                return []
+
+        candidates = [item for item in items if self.__is_usable_backdrop(item.get("backdrop")) and not self.__is_media_in_library(item)]
+        shuffle(candidates)
+        return candidates[:self._today_recommend_count]
 
     def __prune_banner_caches(self):
         self._today_banner_cache_ops = int(getattr(self, "_today_banner_cache_ops", 0)) + 1
@@ -2292,18 +2523,20 @@ class DashboardPlus(_PluginBase):
 
         return False
 
-    def __load_today_recommend_pool(self) -> List[dict]:
-        cache_key = self.__today_result_cache_key()
-        cached = self._today_result_cache.get(cache_key)
-        if isinstance(cached, dict) and self.__cache_valid_with_ttl(cached.get("ts"), self._today_recommend_result_ttl):
-            cached_items = cached.get("items")
-            if isinstance(cached_items, list) and cached_items:
-                logger.info(
-                    "[dashboardplus:today_recommend] result_cache hit key=%s size=%s",
-                    cache_key,
-                    len(cached_items),
-                )
-                return cached_items
+    def __load_today_recommend_pool(self, target_count: Optional[int] = None, use_result_cache: bool = True) -> List[dict]:
+        count = int(target_count) if isinstance(target_count, int) and target_count > 0 else self._today_recommend_count
+        cache_key = f"{self.__today_result_cache_key()}|{count}"
+        if use_result_cache:
+            cached = self._today_result_cache.get(cache_key)
+            if isinstance(cached, dict) and self.__cache_valid_with_ttl(cached.get("ts"), self._today_recommend_result_ttl):
+                cached_items = cached.get("items")
+                if isinstance(cached_items, list) and cached_items:
+                    logger.info(
+                        "[dashboardplus:today_recommend] result_cache hit key=%s size=%s",
+                        cache_key,
+                        len(cached_items),
+                    )
+                    return cached_items
 
         raw_items = self.__fetch_today_recommend_sources()
         raw_count = len(raw_items)
@@ -2352,7 +2585,7 @@ class DashboardPlus(_PluginBase):
             unique_count,
             in_library_filtered,
             candidate_after_library,
-            self._today_recommend_count,
+            count,
         )
 
         if self._today_recommend_banner_policy == "existing_only":
@@ -2360,9 +2593,9 @@ class DashboardPlus(_PluginBase):
             for item in pool:
                 if self.__is_usable_backdrop(item.get("backdrop")):
                     selected.append(item)
-                if len(selected) >= self._today_recommend_count:
+                if len(selected) >= count:
                     break
-            missing_backdrop = max(0, self._today_recommend_count - len(selected))
+            missing_backdrop = max(0, count - len(selected))
             logger.info(
                 "[dashboardplus:today_recommend] banner_policy=%s selected_missing_backdrop=%s",
                 self._today_recommend_banner_policy,
@@ -2383,10 +2616,10 @@ class DashboardPlus(_PluginBase):
                 filled += 1
             if self.__is_usable_backdrop(current.get("backdrop")):
                 output.append(current)
-            if len(output) >= self._today_recommend_count:
+            if len(output) >= count:
                 break
 
-        missing_backdrop = max(0, self._today_recommend_count - len(output))
+        missing_backdrop = max(0, count - len(output))
         logger.info(
             "[dashboardplus:today_recommend] banner_policy=%s fill_attempted=%s missing_backdrop_after_enrich=%s",
             self._today_recommend_banner_policy,
