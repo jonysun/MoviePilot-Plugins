@@ -27,7 +27,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.9"
+    plugin_version = "1.2.10"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -88,9 +88,13 @@ class DashboardPlus(_PluginBase):
     _today_recommend_banner_policy: str = "auto"
     _today_recommend_banner_cache_ttl: int = 43200
     _today_recommend_banner_fill_limit: int = 3
-    _today_recommend_image_fit: str = "cover"
+    _today_recommend_image_fit: str = "auto"
     _today_recommend_result_ttl: int = 600
     _today_recommend_min_height: int = 220
+    _today_recommend_view_mode: str = "classic"
+    _today_recommend_reflective_ratio_left: int = 15
+    _today_recommend_reflective_ratio_center: int = 70
+    _today_recommend_reflective_ratio_right: int = 15
     _today_recommend_use_prewarm_pool: bool = True
     _today_recommend_prewarm_time: str = "08:00"
     _today_recommend_pool_size: int = 30
@@ -212,6 +216,21 @@ class DashboardPlus(_PluginBase):
             config.get("today_recommend_min_height", 220),
             160,
             480
+        )
+        self._today_recommend_view_mode = str(config.get("today_recommend_view_mode", "classic") or "classic")
+        if self._today_recommend_view_mode not in {"classic", "reflective"}:
+            self._today_recommend_view_mode = "classic"
+        reflective_ratio_left = self.__safe_refresh(config.get("today_recommend_reflective_ratio_left", 15), 5, 90)
+        reflective_ratio_center = self.__safe_refresh(config.get("today_recommend_reflective_ratio_center", 70), 5, 90)
+        reflective_ratio_right = self.__safe_refresh(config.get("today_recommend_reflective_ratio_right", 15), 5, 90)
+        (
+            self._today_recommend_reflective_ratio_left,
+            self._today_recommend_reflective_ratio_center,
+            self._today_recommend_reflective_ratio_right,
+        ) = self.__normalize_reflective_ratios(
+            reflective_ratio_left,
+            reflective_ratio_center,
+            reflective_ratio_right,
         )
         self._today_recommend_image_fit = str(config.get("today_recommend_image_fit", "auto") or "auto")
         if self._today_recommend_image_fit not in {"auto", "cover", "contain", "fill"}:
@@ -714,6 +733,70 @@ class DashboardPlus(_PluginBase):
                                             }]
                                         }
                                     ]
+                                 }, {
+                                     "component": "VRow",
+                                     "content": [
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [{
+                                                "component": "VSelect",
+                                                "props": {
+                                                    "model": "today_recommend_view_mode",
+                                                    "label": "展示模式",
+                                                    "items": [
+                                                        {"title": "经典轮播", "value": "classic"},
+                                                        {"title": "反射视角", "value": "reflective"}
+                                                    ]
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_reflective_ratio_left",
+                                                    "label": "左侧比例（%）",
+                                                    "type": "number",
+                                                    "min": 5,
+                                                    "max": 90,
+                                                    "placeholder": "15"
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_reflective_ratio_center",
+                                                    "label": "中间比例（%）",
+                                                    "type": "number",
+                                                    "min": 5,
+                                                    "max": 90,
+                                                    "placeholder": "70"
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_reflective_ratio_right",
+                                                    "label": "右侧比例（%）",
+                                                    "type": "number",
+                                                    "min": 5,
+                                                    "max": 90,
+                                                    "placeholder": "15"
+                                                }
+                                            }]
+                                        }
+                                    ]
                                 }, {
                                     "component": "VRow",
                                     "content": [
@@ -910,6 +993,10 @@ class DashboardPlus(_PluginBase):
             "today_recommend_image_fit": self._today_recommend_image_fit,
             "today_recommend_result_ttl": self._today_recommend_result_ttl,
             "today_recommend_min_height": self._today_recommend_min_height,
+            "today_recommend_view_mode": self._today_recommend_view_mode,
+            "today_recommend_reflective_ratio_left": self._today_recommend_reflective_ratio_left,
+            "today_recommend_reflective_ratio_center": self._today_recommend_reflective_ratio_center,
+            "today_recommend_reflective_ratio_right": self._today_recommend_reflective_ratio_right,
             "cell_scale": self._cell_scale,
             "cell_gap": self._cell_gap,
             "cell_radius": self._cell_radius,
@@ -1081,6 +1168,12 @@ class DashboardPlus(_PluginBase):
         if hours < 0 or hours > 23 or minutes < 0 or minutes > 59:
             return "08:00"
         return f"{hours:02d}:{minutes:02d}"
+
+    @staticmethod
+    def __normalize_reflective_ratios(left: int, center: int, right: int) -> Tuple[int, int, int]:
+        if left + center + right == 100:
+            return left, center, right
+        return 15, 70, 15
 
     def __build_calendar_grid(self, days: int) -> Dict[str, Any]:
         end_date = date.today()
@@ -1843,6 +1936,19 @@ class DashboardPlus(_PluginBase):
                 "text": "暂无可推荐内容",
             }]
 
+        if self._today_recommend_view_mode == "reflective":
+            return self.__build_today_recommend_reflective_elements(pool)
+
+        return self.__build_today_recommend_classic_elements(pool)
+
+    def __build_today_recommend_classic_elements(self, pool: List[dict]) -> List[dict]:
+        if not pool:
+            return [{
+                "component": "VAlert",
+                "props": {"type": "info", "variant": "tonal", "density": "compact"},
+                "text": "暂无可推荐内容",
+            }]
+
         cards: List[dict] = []
         fit_mode = self._today_recommend_image_fit
         if fit_mode == "auto":
@@ -1970,6 +2076,256 @@ class DashboardPlus(_PluginBase):
                     },
                     "content": cards,
                 }],
+            }],
+        }]
+
+    def __build_today_recommend_reflective_elements(self, pool: List[dict]) -> List[dict]:
+        if len(pool) < 3:
+            logger.info("[dashboardplus:today_recommend] reflective fallback to classic: items<3")
+            return self.__build_today_recommend_classic_elements(pool)
+
+        left, center, right = self.__normalize_reflective_ratios(
+            self._today_recommend_reflective_ratio_left,
+            self._today_recommend_reflective_ratio_center,
+            self._today_recommend_reflective_ratio_right,
+        )
+        if (left, center, right) != (
+            self._today_recommend_reflective_ratio_left,
+            self._today_recommend_reflective_ratio_center,
+            self._today_recommend_reflective_ratio_right,
+        ):
+            logger.warning("[dashboardplus:today_recommend] invalid ratios fallback to 15/70/15")
+
+        logger.info(
+            "[dashboardplus:today_recommend] view_mode=reflective ratios=%s/%s/%s",
+            left,
+            center,
+            right,
+        )
+        cards: List[dict] = []
+        total = len(pool)
+        for index in range(total):
+            current = pool[index]
+            prev_item = pool[(index - 1) % total]
+            next_item = pool[(index + 1) % total]
+
+            current_url = self.__proxy_image_url(str(current.get("backdrop") or "").strip())
+            prev_url = self.__proxy_image_url(str(prev_item.get("backdrop") or "").strip())
+            next_url = self.__proxy_image_url(str(next_item.get("backdrop") or "").strip())
+
+            center_text = f"{current.get('year') or ''}  {current.get('title') or ''}".strip()
+            overview = str(current.get("overview") or current.get("summary") or "").strip()
+
+            cards.append({
+                "component": "VCarouselItem",
+                "content": [{
+                    "component": "div",
+                    "props": {
+                        "class": "dp-reflective-layout",
+                        "style": {
+                            "position": "relative",
+                            "display": "flex",
+                            "width": "100%",
+                            "height": "100%",
+                            "overflow": "hidden",
+                            "backgroundColor": "rgba(0,0,0,0.25)",
+                        },
+                    },
+                    "content": [
+                        {
+                            "component": "div",
+                            "props": {
+                                "class": "dp-reflective-side dp-reflective-left",
+                                "style": {
+                                    "position": "relative",
+                                    "width": f"{left}%",
+                                    "height": "100%",
+                                    "overflow": "hidden",
+                                },
+                            },
+                            "content": [
+                                {
+                                    "component": "img",
+                                    "props": {
+                                        "src": prev_url,
+                                        "loading": "eager",
+                                        "style": {
+                                            "width": "100%",
+                                            "height": "100%",
+                                            "objectFit": "cover",
+                                        },
+                                    },
+                                },
+                                {
+                                    "component": "div",
+                                    "props": {
+                                        "style": {
+                                            "position": "absolute",
+                                            "inset": "0",
+                                            "background": "linear-gradient(90deg, rgba(255,255,255,0.72) 0%, rgba(255,255,255,0.15) 100%)",
+                                        },
+                                    },
+                                },
+                            ],
+                        },
+                        {
+                            "component": "a",
+                            "props": {
+                                "class": "dp-reflective-center",
+                                "href": self.__build_today_recommend_link(current),
+                                "style": {
+                                    "position": "relative",
+                                    "display": "block",
+                                    "width": f"{center}%",
+                                    "height": "100%",
+                                    "textDecoration": "none",
+                                    "overflow": "hidden",
+                                },
+                            },
+                            "content": [
+                                {
+                                    "component": "img",
+                                    "props": {
+                                        "src": current_url,
+                                        "loading": "eager",
+                                        "style": {
+                                            "width": "100%",
+                                            "height": "100%",
+                                            "objectFit": "cover",
+                                        },
+                                    },
+                                },
+                                {
+                                    "component": "div",
+                                    "props": {
+                                        "class": "dp-reflective-center-overlay",
+                                        "style": {
+                                            "position": "absolute",
+                                            "left": "0",
+                                            "right": "0",
+                                            "bottom": "0",
+                                            "padding": "10px 12px",
+                                            "background": "linear-gradient(180deg, rgba(255,255,255,0) 0%, rgba(0,0,0,0.82) 100%)",
+                                            "color": "#FFF",
+                                            "opacity": 0,
+                                            "transition": "opacity 0.22s ease",
+                                            "pointerEvents": "none",
+                                        },
+                                    },
+                                    "content": [
+                                        {
+                                            "component": "div",
+                                            "props": {
+                                                "style": {
+                                                    "fontSize": "14px",
+                                                    "fontWeight": 600,
+                                                    "whiteSpace": "nowrap",
+                                                    "overflow": "hidden",
+                                                    "textOverflow": "ellipsis",
+                                                },
+                                            },
+                                            "text": center_text,
+                                        },
+                                        {
+                                            "component": "div",
+                                            "props": {
+                                                "style": {
+                                                    "marginTop": "3px",
+                                                    "fontSize": "12px",
+                                                    "lineHeight": "1.3",
+                                                    "opacity": 0.95,
+                                                    "maxHeight": "2.6em",
+                                                    "overflow": "hidden",
+                                                },
+                                            },
+                                            "text": overview,
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                        {
+                            "component": "div",
+                            "props": {
+                                "class": "dp-reflective-side dp-reflective-right",
+                                "style": {
+                                    "position": "relative",
+                                    "width": f"{right}%",
+                                    "height": "100%",
+                                    "overflow": "hidden",
+                                },
+                            },
+                            "content": [
+                                {
+                                    "component": "img",
+                                    "props": {
+                                        "src": next_url,
+                                        "loading": "eager",
+                                        "style": {
+                                            "width": "100%",
+                                            "height": "100%",
+                                            "objectFit": "cover",
+                                        },
+                                    },
+                                },
+                                {
+                                    "component": "div",
+                                    "props": {
+                                        "style": {
+                                            "position": "absolute",
+                                            "inset": "0",
+                                            "background": "linear-gradient(270deg, rgba(255,255,255,0.72) 0%, rgba(255,255,255,0.15) 100%)",
+                                        },
+                                    },
+                                },
+                            ],
+                        },
+                    ],
+                }],
+            })
+
+        css_block = (
+            ".dp-reflective-carousel .v-window__left,.dp-reflective-carousel .v-window__right{"
+            "top:0;height:100%;margin-top:0;transform:none;border-radius:0;"
+            "opacity:0;transition:opacity .18s ease;background:rgba(0,0,0,0.16);}"
+            ".dp-reflective-carousel .v-window__left{left:0;width:var(--dp-left-zone);justify-content:flex-start;padding-left:10px;}"
+            ".dp-reflective-carousel .v-window__right{right:0;width:var(--dp-right-zone);justify-content:flex-end;padding-right:10px;}"
+            ".dp-reflective-carousel .v-window__left:hover,.dp-reflective-carousel .v-window__right:hover{opacity:1;}"
+            ".dp-reflective-carousel .v-window__left .v-btn,.dp-reflective-carousel .v-window__right .v-btn{"
+            "background:rgba(0,0,0,0.35);color:#fff;}"
+            ".dp-reflective-carousel .dp-reflective-center:hover .dp-reflective-center-overlay{opacity:1;}"
+        )
+
+        return [{
+            "component": "VRow",
+            "content": [{
+                "component": "VCol",
+                "props": {"cols": 12},
+                "content": [
+                    {
+                        "component": "style",
+                        "text": css_block,
+                    },
+                    {
+                        "component": "VCarousel",
+                        "props": {
+                            "class": "dp-reflective-carousel",
+                            "cycle": True,
+                            "continuous": True,
+                            "showArrows": "hover",
+                            "hideDelimiters": True,
+                            "interval": self._today_recommend_speed * 1000,
+                            "height": self._today_recommend_min_height,
+                            "style": {
+                                "borderRadius": "10px",
+                                "overflow": "hidden",
+                                "--dp-left-zone": f"{left}%",
+                                "--dp-right-zone": f"{right}%",
+                            },
+                        },
+                        "content": cards,
+                    },
+                ],
             }],
         }]
 
