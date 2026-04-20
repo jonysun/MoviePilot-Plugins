@@ -27,7 +27,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.15"
+    plugin_version = "1.2.16"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -1990,8 +1990,9 @@ class DashboardPlus(_PluginBase):
 
     def __build_today_recommend_elements(self) -> List[dict]:
         if self._today_recommend_use_prewarm_pool:
-            self.__refresh_today_pool_if_needed()
             pool = self.__pick_today_pool_items()
+            if self.__today_pool_expired() or not pool:
+                self.__trigger_today_pool_refresh_async(force=not bool(pool))
             logger.info(
                 "[dashboardplus:today_recommend] render uses prewarm pool sampled=%s",
                 len(pool),
@@ -2167,8 +2168,8 @@ class DashboardPlus(_PluginBase):
                                         "overflow": "hidden",
                                         "pointerEvents": "none",
                                     },
-                                    "text": overview,
                                 },
+                                "text": overview,
                             }],
                         },
                     ],
@@ -2232,8 +2233,6 @@ class DashboardPlus(_PluginBase):
             center,
             right,
         )
-        left_mirror_scale = max(1.0, float(center) / float(max(1, left)))
-        right_mirror_scale = max(1.0, float(center) / float(max(1, right)))
         mirror_blur_px = self._today_recommend_reflective_blur_px
         mirror_brightness = max(0.5, min(1.0, self._today_recommend_reflective_brightness / 100.0))
         gradient_main = max(0.30, min(0.90, self._today_recommend_reflective_gradient_strength / 100.0))
@@ -2286,10 +2285,8 @@ class DashboardPlus(_PluginBase):
                                         "loading": "eager",
                                         "style": {
                                             "position": "absolute",
-                                            "top": "0",
-                                            "bottom": "0",
-                                            "right": "-1px",
-                                            "width": f"{left_mirror_scale * 100:.2f}%",
+                                            "inset": "0",
+                                            "width": "100%",
                                             "height": "100%",
                                             "objectFit": "cover",
                                             "objectPosition": "left center",
@@ -2325,8 +2322,8 @@ class DashboardPlus(_PluginBase):
                                     "textDecoration": "none",
                                     "overflow": "hidden",
                                     "flexShrink": 0,
-                                    "marginLeft": "-1px",
-                                    "marginRight": "-1px",
+                                    "borderLeft": "1px solid rgba(255,255,255,0.45)",
+                                    "borderRight": "1px solid rgba(255,255,255,0.45)",
                                 },
                             },
                             "content": [
@@ -2415,12 +2412,12 @@ class DashboardPlus(_PluginBase):
                                                 "fontSize": "12px",
                                                 "lineHeight": "1.35",
                                                 "maxHeight": "4.0em",
-                                                "overflow": "hidden",
-                                                "pointerEvents": "none",
-                                                "zIndex": 3,
-                                            },
-                                            "text": overview,
+                                            "overflow": "hidden",
+                                            "pointerEvents": "none",
+                                            "zIndex": 3,
                                         },
+                                        },
+                                        "text": overview,
                                     }],
                                 },
                             ],
@@ -2445,10 +2442,8 @@ class DashboardPlus(_PluginBase):
                                         "loading": "eager",
                                         "style": {
                                             "position": "absolute",
-                                            "top": "0",
-                                            "bottom": "0",
-                                            "left": "-1px",
-                                            "width": f"{right_mirror_scale * 100:.2f}%",
+                                            "inset": "0",
+                                            "width": "100%",
                                             "height": "100%",
                                             "objectFit": "cover",
                                             "objectPosition": "right center",
@@ -2510,15 +2505,10 @@ class DashboardPlus(_PluginBase):
     def __today_recommend_carousel_css() -> str:
         return (
             ".dp-today-carousel .v-window__left,.dp-today-carousel .v-window__right{"
-            "top:0;height:100%;margin-top:0;transform:none;width:52px;"
-            "background:transparent !important;border-radius:0;box-shadow:none !important;"
-            "pointer-events:auto;}"
-            ".dp-today-carousel .v-window__left{left:0;justify-content:flex-start;padding-left:8px;}"
-            ".dp-today-carousel .v-window__right{right:0;justify-content:flex-end;padding-right:8px;}"
+            "background:transparent !important;border-radius:0;box-shadow:none !important;}"
             ".dp-today-carousel .v-window__left .v-btn,.dp-today-carousel .v-window__right .v-btn{"
             "min-width:22px;width:22px;height:22px;border-radius:999px;"
-            "padding:0;background:transparent !important;box-shadow:none !important;opacity:0;transition:opacity .15s ease;}"
-            ".dp-today-carousel .v-window__left:hover .v-btn,.dp-today-carousel .v-window__right:hover .v-btn{opacity:1;}"
+            "padding:0;background:transparent !important;box-shadow:none !important;}"
             ".dp-today-carousel .v-window__left .v-btn::before,.dp-today-carousel .v-window__right .v-btn::before,"
             ".dp-today-carousel .v-window__left .v-btn .v-btn__overlay,.dp-today-carousel .v-window__right .v-btn .v-btn__overlay,"
             ".dp-today-carousel .v-window__left .v-btn .v-btn__underlay,.dp-today-carousel .v-window__right .v-btn .v-btn__underlay{display:none !important;}"
@@ -2527,6 +2517,21 @@ class DashboardPlus(_PluginBase):
             ".dp-today-carousel .dp-today-summary-overlay{opacity:0;transition:opacity .2s ease;}"
             ".dp-today-carousel .dp-today-center-zone:hover .dp-today-summary-overlay{opacity:1;}"
         )
+
+    def __trigger_today_pool_refresh_async(self, force: bool = False):
+        if self._today_pool_refreshing:
+            return
+
+        def _refresh_worker():
+            try:
+                self.__refresh_today_pool_if_needed(force=force)
+            except Exception:
+                pass
+
+        try:
+            threading.Thread(target=_refresh_worker, name="dashboardplus-today-refresh", daemon=True).start()
+        except Exception:
+            self.__refresh_today_pool_if_needed(force=force)
 
     @staticmethod
     def __build_today_recommend_link(item: Dict[str, Any]) -> str:
@@ -2769,12 +2774,7 @@ class DashboardPlus(_PluginBase):
         cache = self._today_recommend_pool_cache if isinstance(self._today_recommend_pool_cache, dict) else {}
         items = cache.get("items") if isinstance(cache, dict) else None
         if not isinstance(items, list) or not items:
-            # startup fallback
-            self.__refresh_today_pool_if_needed(force=True)
-            cache = self._today_recommend_pool_cache if isinstance(self._today_recommend_pool_cache, dict) else {}
-            items = cache.get("items") if isinstance(cache, dict) else None
-            if not isinstance(items, list) or not items:
-                return []
+            return []
 
         candidates = [item for item in items if self.__is_usable_backdrop(item.get("backdrop")) and not self.__is_media_in_library(item)]
         shuffle(candidates)
