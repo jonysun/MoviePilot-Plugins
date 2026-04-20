@@ -27,7 +27,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.16"
+    plugin_version = "1.2.17"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -2233,10 +2233,12 @@ class DashboardPlus(_PluginBase):
             center,
             right,
         )
+        left_mirror_scale = max(1.0, min(6.0, float(center) / float(max(1, left))))
+        right_mirror_scale = max(1.0, min(6.0, float(center) / float(max(1, right))))
         mirror_blur_px = self._today_recommend_reflective_blur_px
         mirror_brightness = max(0.5, min(1.0, self._today_recommend_reflective_brightness / 100.0))
-        gradient_main = max(0.30, min(0.90, self._today_recommend_reflective_gradient_strength / 100.0))
-        gradient_mid = max(0.08, min(0.45, gradient_main * 0.35))
+        gradient_main = max(0.18, min(0.70, self._today_recommend_reflective_gradient_strength / 140.0))
+        gradient_mid = max(0.06, min(0.30, gradient_main * 0.4))
         cards: List[dict] = []
         total = len(pool)
         for index in range(total):
@@ -2285,15 +2287,17 @@ class DashboardPlus(_PluginBase):
                                         "loading": "eager",
                                         "style": {
                                             "position": "absolute",
-                                            "inset": "0",
-                                            "width": "100%",
+                                            "top": "0",
+                                            "bottom": "0",
+                                            "right": "0",
+                                            "width": f"{left_mirror_scale * 100:.2f}%",
                                             "height": "100%",
                                             "objectFit": "cover",
                                             "objectPosition": "left center",
                                             "transform": "scaleX(-1)",
                                             "transformOrigin": "right center",
                                             "filter": f"saturate(0.72) blur({mirror_blur_px:.2f}px) brightness({mirror_brightness:.2f})",
-                                            "opacity": 0.88,
+                                            "opacity": 0.95,
                                         },
                                     },
                                 },
@@ -2442,15 +2446,17 @@ class DashboardPlus(_PluginBase):
                                         "loading": "eager",
                                         "style": {
                                             "position": "absolute",
-                                            "inset": "0",
-                                            "width": "100%",
+                                            "top": "0",
+                                            "bottom": "0",
+                                            "left": "0",
+                                            "width": f"{right_mirror_scale * 100:.2f}%",
                                             "height": "100%",
                                             "objectFit": "cover",
                                             "objectPosition": "right center",
                                             "transform": "scaleX(-1)",
                                             "transformOrigin": "left center",
                                             "filter": f"saturate(0.72) blur({mirror_blur_px:.2f}px) brightness({mirror_brightness:.2f})",
-                                            "opacity": 0.88,
+                                            "opacity": 0.95,
                                         },
                                     },
                                 },
@@ -2487,7 +2493,7 @@ class DashboardPlus(_PluginBase):
                             "cycle": True,
                             "continuous": True,
                             "showArrows": "hover",
-                            "hideDelimiters": len(cards) <= 1,
+                            "hideDelimiters": True,
                             "interval": self._today_recommend_speed * 1000,
                             "height": self._today_recommend_min_height,
                             "style": {
