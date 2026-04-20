@@ -5,6 +5,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from apscheduler.triggers.cron import CronTrigger
 
 from app.log import logger
+from app.core.config import settings
 from app.plugins import _PluginBase
 from app.schemas import NotificationType
 from app.utils.http import RequestUtils
@@ -14,7 +15,7 @@ class ChdTaskMonitor(_PluginBase):
     plugin_name = "CHD任务监控"
     plugin_desc = "抓取CHD任务页面进度与任务人数，并按规则发送通知。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.0.7"
+    plugin_version = "1.0.10"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "chdtaskmonitor_"
@@ -41,6 +42,7 @@ class ChdTaskMonitor(_PluginBase):
     _last_cookie_alert_day: str = ""
     _last_error_alert_day: str = ""
     _last_snapshot: Dict[str, Any] = {}
+    _last_poll_ts: float = 0.0
 
     _url: str = "https://ptchdbits.co/selfassess.php"
     _SIZE_COLS: Dict[str, Dict[str, int]] = {
@@ -83,6 +85,15 @@ class ChdTaskMonitor(_PluginBase):
             self._onlyonce = False
             self.__persist_config()
 
+        if self._enabled:
+            logger.info(
+                "[chdtaskmonitor] config loaded: check_cron=%s daily_notify_time=%s notify_capacity=%s notify_daily=%s",
+                self._check_cron,
+                self._daily_notify_time,
+                self._notify_on_capacity_available,
+                self._notify_daily_progress,
+            )
+
     def get_state(self) -> bool:
         return self._enabled
 
@@ -106,6 +117,7 @@ class ChdTaskMonitor(_PluginBase):
                 "func": self._run_polling,
                 "kwargs": {},
             })
+            logger.info("[chdtaskmonitor] register polling cron: %s", self._check_cron)
         except Exception:
             logger.warning("[chdtaskmonitor] check_cron 非法，使用默认 */30 * * * *")
             services.append({
@@ -115,6 +127,7 @@ class ChdTaskMonitor(_PluginBase):
                 "func": self._run_polling,
                 "kwargs": {},
             })
+            logger.info("[chdtaskmonitor] register polling cron: */30 * * * *")
 
         if self._notify_daily_progress:
             hour, minute = self.__parse_hhmm(self._daily_notify_time)
@@ -125,17 +138,30 @@ class ChdTaskMonitor(_PluginBase):
                 "func": self._run_daily_summary,
                 "kwargs": {},
             })
+            logger.info("[chdtaskmonitor] register daily summary time: %02d:%02d", hour, minute)
 
         return services
 
     def _run_polling(self):
-        parsed = self._fetch_and_parse()
+        now_ts = datetime.now().timestamp()
+        # guard against duplicated scheduler trigger storms
+        if self._last_poll_ts and (now_ts - self._last_poll_ts) < 20:
+            logger.info("[chdtaskmonitor] polling skipped by guard window")
+            return
+        self._last_poll_ts = now_ts
+
+        parsed = self._fetch_and_parse(source="polling")
         if not parsed:
             logger.info("[chdtaskmonitor] polling skipped: parse_result=None")
             return
 
         if not self._notify_on_capacity_available:
             logger.info("[chdtaskmonitor] capacity notify disabled")
+            return
+
+        # If user already has an active task, don't send slot-available alerts.
+        if parsed.get("has_task"):
+            logger.info("[chdtaskmonitor] capacity alert skipped: active task exists")
             return
 
         population = parsed.get("population")
@@ -169,7 +195,7 @@ class ChdTaskMonitor(_PluginBase):
         if not self._notify_daily_progress:
             return
 
-        parsed = self._fetch_and_parse()
+        parsed = self._fetch_and_parse(source="daily")
         if not parsed:
             logger.info("[chdtaskmonitor] daily summary skipped: parse_result=None")
             return
@@ -188,8 +214,8 @@ class ChdTaskMonitor(_PluginBase):
         )
         logger.info("[chdtaskmonitor] daily summary sent")
 
-    def _fetch_and_parse(self) -> Optional[Dict[str, Any]]:
-        html = self._fetch_selfassess_html()
+    def _fetch_and_parse(self, source: str = "manual") -> Optional[Dict[str, Any]]:
+        html = self._fetch_selfassess_html(source=source)
         if not html:
             self.__notify_error_once_per_day("请求任务页面失败，请检查网络或Cookie。")
             return None
@@ -204,7 +230,8 @@ class ChdTaskMonitor(_PluginBase):
             **parsed,
         }
         logger.info(
-            "[chdtaskmonitor] parsed countdown=%s upload=%s download=%s seeding=%s population=%s",
+            "[chdtaskmonitor] parsed source=%s countdown=%s upload=%s download=%s seeding=%s population=%s",
+            source,
             parsed.get("countdown"),
             parsed.get("upload"),
             parsed.get("download"),
@@ -213,7 +240,7 @@ class ChdTaskMonitor(_PluginBase):
         )
         return parsed
 
-    def _fetch_selfassess_html(self) -> Optional[str]:
+    def _fetch_selfassess_html(self, source: str = "manual") -> Optional[str]:
         if not self._cookie:
             return None
         try:
@@ -222,7 +249,7 @@ class ChdTaskMonitor(_PluginBase):
                 headers={"User-Agent": self._ua},
             ).get_res(url=self._url)
             if response and response.status_code == 200:
-                logger.info("[chdtaskmonitor] page fetch ok: status=200 via cookies param")
+                logger.info("[chdtaskmonitor] page fetch ok: source=%s status=200 via cookies param", source)
                 return response.text
 
             # fallback: some environments require explicit Cookie header string
@@ -233,11 +260,12 @@ class ChdTaskMonitor(_PluginBase):
                 }
             ).get_res(url=self._url)
             if response and response.status_code == 200:
-                logger.info("[chdtaskmonitor] page fetch ok: status=200 via Cookie header")
+                logger.info("[chdtaskmonitor] page fetch ok: source=%s status=200 via Cookie header", source)
                 return response.text
 
             logger.warning(
-                "[chdtaskmonitor] 请求失败 status=%s",
+                "[chdtaskmonitor] 请求失败 source=%s status=%s",
+                source,
                 response.status_code if response else "None",
             )
             return None
@@ -454,6 +482,8 @@ class ChdTaskMonitor(_PluginBase):
         })
 
     def get_form(self) -> Tuple[List[dict], Dict[str, Any]]:
+        version_flag = getattr(settings, "VERSION_FLAG", "v1")
+        cron_field_component = "VCronField" if version_flag == "v2" else "VTextField"
         return [
             {
                 "component": "VForm",
@@ -543,7 +573,7 @@ class ChdTaskMonitor(_PluginBase):
                                 "component": "VCol",
                                 "props": {"cols": 12, "md": 6},
                                 "content": [{
-                                    "component": "VTextField",
+                                    "component": cron_field_component,
                                     "props": {
                                         "model": "check_cron",
                                         "label": "轮询Cron",
@@ -672,9 +702,7 @@ class ChdTaskMonitor(_PluginBase):
         }
 
     def get_page(self) -> List[dict]:
-        latest = self._fetch_and_parse() or {}
-        if not latest and isinstance(self._last_snapshot, dict):
-            latest = dict(self._last_snapshot)
+        latest = dict(self._last_snapshot) if isinstance(self._last_snapshot, dict) else {}
 
         updated_at = str(latest.get("updated_at") or "未获取")
         countdown = str(latest.get("countdown") or "未解析到")
@@ -738,9 +766,7 @@ class ChdTaskMonitor(_PluginBase):
         cols = self._SIZE_COLS.get(self._dashboard_size, self._SIZE_COLS["half"])
         attrs = {"title": "CHD任务监控", "refresh": 300, "border": True}
 
-        latest = self._fetch_and_parse() or {}
-        if not latest and isinstance(self._last_snapshot, dict):
-            latest = dict(self._last_snapshot)
+        latest = dict(self._last_snapshot) if isinstance(self._last_snapshot, dict) else {}
 
         updated_at = str(latest.get("updated_at") or "未获取")
         countdown = str(latest.get("countdown") or "未解析到")
@@ -766,7 +792,7 @@ class ChdTaskMonitor(_PluginBase):
                         "content": [
                             {
                                 "component": "VCard",
-                                "props": {"variant": "tonal", "style": {"minHeight": f"{self._dashboard_min_height}px"}},
+                                "props": {"variant": "flat", "style": {"minHeight": f"{self._dashboard_min_height}px"}},
                                 "content": [
                                     {
                                         "component": "VCardText",
@@ -778,12 +804,15 @@ class ChdTaskMonitor(_PluginBase):
                                             },
                                             {
                                                 "component": "div",
-                                                "props": {"style": {"marginTop": "10px", "lineHeight": "1.75"}},
+                                                "props": {"style": {"marginTop": "10px", "lineHeight": "1.75", "whiteSpace": "normal"}},
                                                 "content": [
-                                                    {"component": "div", "text": f"我的任务：剩余时间 {countdown}"},
-                                                    {"component": "div", "props": {"style": {"color": upload_color}}, "text": f"上传量：{upload}"},
-                                                    {"component": "div", "props": {"style": {"color": download_color}}, "text": f"下载量：{download}"},
-                                                    {"component": "div", "props": {"style": {"color": seeding_color}}, "text": f"做种积分：{seeding}"},
+                                                    {"component": "div", "text": f"任务人数：{population_text}", "props": {"style": {"color": population_color}}},
+                                                    {"component": "div", "text": (f"我的任务：剩余时间 {countdown}" if has_task else "我的任务：当前无任务")},
+                                                    *([
+                                                        {"component": "div", "props": {"style": {"color": upload_color}}, "text": f"上传量：{upload}"},
+                                                        {"component": "div", "props": {"style": {"color": download_color}}, "text": f"下载量：{download}"},
+                                                        {"component": "div", "props": {"style": {"color": seeding_color}}, "text": f"做种积分：{seeding}"},
+                                                    ] if has_task else []),
                                                 ],
                                             },
                                         ],
@@ -794,16 +823,6 @@ class ChdTaskMonitor(_PluginBase):
                     },
                 ],
             }
-        ]
-        # make dashboard content match plugin page display shape
-        elements[0]["content"][0]["content"][0]["content"][0]["content"][1]["content"] = [
-            {"component": "div", "text": f"任务人数：{population_text}", "props": {"style": {"color": population_color}}},
-            {"component": "div", "text": (f"我的任务：剩余时间 {countdown}" if has_task else "我的任务：当前无任务")},
-            *([
-                {"component": "div", "props": {"style": {"color": upload_color}}, "text": f"上传量：{upload}"},
-                {"component": "div", "props": {"style": {"color": download_color}}, "text": f"下载量：{download}"},
-                {"component": "div", "props": {"style": {"color": seeding_color}}, "text": f"做种积分：{seeding}"},
-            ] if has_task else []),
         ]
         return cols, attrs, elements
 
