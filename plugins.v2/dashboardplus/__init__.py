@@ -27,7 +27,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.18"
+    plugin_version = "1.2.19"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -2320,8 +2320,6 @@ class DashboardPlus(_PluginBase):
             center,
             right,
         )
-        left_mirror_scale = max(1.0, min(6.0, float(center) / float(max(1, left))))
-        right_mirror_scale = max(1.0, min(6.0, float(center) / float(max(1, right))))
         mirror_blur_px = self._today_recommend_reflective_blur_px
         mirror_brightness = max(0.5, min(1.0, self._today_recommend_reflective_brightness / 100.0))
         overlay_enabled = self._today_recommend_reflective_overlay_enabled
@@ -2352,7 +2350,7 @@ class DashboardPlus(_PluginBase):
                             "width": "100%",
                             "height": "100%",
                             "overflow": "hidden",
-                            "backgroundColor": "rgba(0,0,0,0.25)",
+                            "backgroundColor": "transparent",
                         },
                     },
                     "content": [
@@ -2376,15 +2374,13 @@ class DashboardPlus(_PluginBase):
                                         "loading": "eager",
                                         "style": {
                                             "position": "absolute",
-                                            "top": "0",
-                                            "bottom": "0",
-                                            "right": "0",
-                                            "width": f"{left_mirror_scale * 100:.2f}%",
+                                            "inset": "0",
+                                            "width": "100%",
                                             "height": "100%",
                                             "objectFit": "cover",
-                                            "objectPosition": "left center",
-                                            "transform": "scaleX(-1) scale(1.22)",
-                                            "transformOrigin": "right center",
+                                            "objectPosition": "right center",
+                                            "transform": "scaleX(-1)",
+                                            "transformOrigin": "center center",
                                             "filter": f"saturate(0.72) blur({mirror_blur_px:.2f}px) brightness({mirror_brightness:.2f})",
                                             "opacity": 1,
                                             "zIndex": 1,
@@ -2541,15 +2537,13 @@ class DashboardPlus(_PluginBase):
                                         "loading": "eager",
                                         "style": {
                                             "position": "absolute",
-                                            "top": "0",
-                                            "bottom": "0",
-                                            "left": "0",
-                                            "width": f"{right_mirror_scale * 100:.2f}%",
+                                            "inset": "0",
+                                            "width": "100%",
                                             "height": "100%",
                                             "objectFit": "cover",
-                                            "objectPosition": "right center",
-                                            "transform": "scaleX(-1) scale(1.22)",
-                                            "transformOrigin": "left center",
+                                            "objectPosition": "left center",
+                                            "transform": "scaleX(-1)",
+                                            "transformOrigin": "center center",
                                             "filter": f"saturate(0.72) blur({mirror_blur_px:.2f}px) brightness({mirror_brightness:.2f})",
                                             "opacity": 1,
                                             "zIndex": 1,
