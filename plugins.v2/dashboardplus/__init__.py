@@ -27,7 +27,7 @@ class DashboardPlus(_PluginBase):
     plugin_name = "仪表板增强"
     plugin_desc = "提供入库热力图、主机性能、站点统计、存储媒体组合四类仪表板组件。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.2.17"
+    plugin_version = "1.2.18"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "dashboardplus_"
@@ -98,6 +98,10 @@ class DashboardPlus(_PluginBase):
     _today_recommend_reflective_blur_px: float = 1.1
     _today_recommend_reflective_brightness: int = 82
     _today_recommend_reflective_gradient_strength: int = 62
+    _today_recommend_reflective_overlay_enabled: bool = True
+    _today_recommend_reflective_overlay_start_opacity: int = 24
+    _today_recommend_reflective_overlay_mid_opacity: int = 8
+    _today_recommend_reflective_overlay_mid_stop: int = 58
     _today_recommend_use_prewarm_pool: bool = True
     _today_recommend_prewarm_time: str = "08:00"
     _today_recommend_pool_size: int = 30
@@ -249,6 +253,25 @@ class DashboardPlus(_PluginBase):
         self._today_recommend_reflective_gradient_strength = self.__safe_refresh(
             config.get("today_recommend_reflective_gradient_strength", 62),
             30,
+            90,
+        )
+        self._today_recommend_reflective_overlay_enabled = self.__to_bool(
+            config.get("today_recommend_reflective_overlay_enabled", True),
+            default=True,
+        )
+        self._today_recommend_reflective_overlay_start_opacity = self.__safe_refresh(
+            config.get("today_recommend_reflective_overlay_start_opacity", 24),
+            0,
+            90,
+        )
+        self._today_recommend_reflective_overlay_mid_opacity = self.__safe_refresh(
+            config.get("today_recommend_reflective_overlay_mid_opacity", 8),
+            0,
+            80,
+        )
+        self._today_recommend_reflective_overlay_mid_stop = self.__safe_refresh(
+            config.get("today_recommend_reflective_overlay_mid_stop", 58),
+            20,
             90,
         )
         self._today_recommend_image_fit = str(config.get("today_recommend_image_fit", "auto") or "auto")
@@ -821,6 +844,66 @@ class DashboardPlus(_PluginBase):
                                     "content": [
                                         {
                                             "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [{
+                                                "component": "VSwitch",
+                                                "props": {
+                                                    "model": "today_recommend_reflective_overlay_enabled",
+                                                    "label": "启用反射渐变蒙版"
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_reflective_overlay_start_opacity",
+                                                    "label": "蒙版起始透明度（0-90）",
+                                                    "type": "number",
+                                                    "min": 0,
+                                                    "max": 90,
+                                                    "placeholder": "24"
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_reflective_overlay_mid_opacity",
+                                                    "label": "蒙版中段透明度（0-80）",
+                                                    "type": "number",
+                                                    "min": 0,
+                                                    "max": 80,
+                                                    "placeholder": "8"
+                                                }
+                                            }]
+                                        },
+                                        {
+                                            "component": "VCol",
+                                            "props": {"cols": 12, "md": 3},
+                                            "content": [{
+                                                "component": "VTextField",
+                                                "props": {
+                                                    "model": "today_recommend_reflective_overlay_mid_stop",
+                                                    "label": "蒙版中段位置（20-90%）",
+                                                    "type": "number",
+                                                    "min": 20,
+                                                    "max": 90,
+                                                    "placeholder": "58"
+                                                }
+                                            }]
+                                        }
+                                    ]
+                                }, {
+                                    "component": "VRow",
+                                    "content": [
+                                        {
+                                            "component": "VCol",
                                             "props": {"cols": 12, "md": 4},
                                             "content": [{
                                                 "component": "VTextField",
@@ -1069,6 +1152,10 @@ class DashboardPlus(_PluginBase):
             "today_recommend_reflective_blur_px": self._today_recommend_reflective_blur_px,
             "today_recommend_reflective_brightness": self._today_recommend_reflective_brightness,
             "today_recommend_reflective_gradient_strength": self._today_recommend_reflective_gradient_strength,
+            "today_recommend_reflective_overlay_enabled": self._today_recommend_reflective_overlay_enabled,
+            "today_recommend_reflective_overlay_start_opacity": self._today_recommend_reflective_overlay_start_opacity,
+            "today_recommend_reflective_overlay_mid_opacity": self._today_recommend_reflective_overlay_mid_opacity,
+            "today_recommend_reflective_overlay_mid_stop": self._today_recommend_reflective_overlay_mid_stop,
             "cell_scale": self._cell_scale,
             "cell_gap": self._cell_gap,
             "cell_radius": self._cell_radius,
@@ -2237,8 +2324,10 @@ class DashboardPlus(_PluginBase):
         right_mirror_scale = max(1.0, min(6.0, float(center) / float(max(1, right))))
         mirror_blur_px = self._today_recommend_reflective_blur_px
         mirror_brightness = max(0.5, min(1.0, self._today_recommend_reflective_brightness / 100.0))
-        gradient_main = max(0.18, min(0.70, self._today_recommend_reflective_gradient_strength / 140.0))
-        gradient_mid = max(0.06, min(0.30, gradient_main * 0.4))
+        overlay_enabled = self._today_recommend_reflective_overlay_enabled
+        overlay_start = max(0.0, min(0.9, self._today_recommend_reflective_overlay_start_opacity / 100.0))
+        overlay_mid = max(0.0, min(0.8, self._today_recommend_reflective_overlay_mid_opacity / 100.0))
+        overlay_stop = max(20, min(90, self._today_recommend_reflective_overlay_mid_stop))
         cards: List[dict] = []
         total = len(pool)
         for index in range(total):
@@ -2294,10 +2383,11 @@ class DashboardPlus(_PluginBase):
                                             "height": "100%",
                                             "objectFit": "cover",
                                             "objectPosition": "left center",
-                                            "transform": "scaleX(-1)",
+                                            "transform": "scaleX(-1) scale(1.22)",
                                             "transformOrigin": "right center",
                                             "filter": f"saturate(0.72) blur({mirror_blur_px:.2f}px) brightness({mirror_brightness:.2f})",
-                                            "opacity": 0.95,
+                                            "opacity": 1,
+                                            "zIndex": 1,
                                         },
                                     },
                                 },
@@ -2307,7 +2397,12 @@ class DashboardPlus(_PluginBase):
                                         "style": {
                                             "position": "absolute",
                                             "inset": "0",
-                                            "background": f"linear-gradient(90deg, rgba(0,0,0,{gradient_main:.2f}) 0%, rgba(0,0,0,{gradient_mid:.2f}) 58%, rgba(0,0,0,0) 100%)",
+                                            "background": (
+                                                f"linear-gradient(90deg, rgba(0,0,0,{overlay_start:.2f}) 0%, rgba(0,0,0,{overlay_mid:.2f}) {overlay_stop}%, rgba(0,0,0,0) 100%)"
+                                                if overlay_enabled
+                                                else "transparent"
+                                            ),
+                                            "zIndex": 2,
                                         },
                                     },
                                 },
@@ -2453,10 +2548,11 @@ class DashboardPlus(_PluginBase):
                                             "height": "100%",
                                             "objectFit": "cover",
                                             "objectPosition": "right center",
-                                            "transform": "scaleX(-1)",
+                                            "transform": "scaleX(-1) scale(1.22)",
                                             "transformOrigin": "left center",
                                             "filter": f"saturate(0.72) blur({mirror_blur_px:.2f}px) brightness({mirror_brightness:.2f})",
-                                            "opacity": 0.95,
+                                            "opacity": 1,
+                                            "zIndex": 1,
                                         },
                                     },
                                 },
@@ -2466,7 +2562,12 @@ class DashboardPlus(_PluginBase):
                                         "style": {
                                             "position": "absolute",
                                             "inset": "0",
-                                            "background": f"linear-gradient(270deg, rgba(0,0,0,{gradient_main:.2f}) 0%, rgba(0,0,0,{gradient_mid:.2f}) 58%, rgba(0,0,0,0) 100%)",
+                                            "background": (
+                                                f"linear-gradient(270deg, rgba(0,0,0,{overlay_start:.2f}) 0%, rgba(0,0,0,{overlay_mid:.2f}) {overlay_stop}%, rgba(0,0,0,0) 100%)"
+                                                if overlay_enabled
+                                                else "transparent"
+                                            ),
+                                            "zIndex": 2,
                                         },
                                     },
                                 },
