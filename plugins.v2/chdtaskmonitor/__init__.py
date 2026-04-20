@@ -14,7 +14,7 @@ class ChdTaskMonitor(_PluginBase):
     plugin_name = "CHD任务监控"
     plugin_desc = "抓取CHD任务页面进度与任务人数，并按规则发送通知。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.0.4"
+    plugin_version = "1.0.6"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "chdtaskmonitor_"
@@ -233,29 +233,80 @@ class ChdTaskMonitor(_PluginBase):
     def _parse_task_page(self, html: str) -> Dict[str, Any]:
         text = self.__html_to_text(html)
 
-        countdown_match = re.search(r"您领取的任务距离结束还有\s*([0-9\s天小时分钟秒]+)", text)
-        upload_match = re.search(r"上传量[:：]\s*(.+?)(?:下载量[:：]|做种积分[:：]|任务系统当前人数[:：]|$)", text)
-        download_match = re.search(r"下载量[:：]\s*(.+?)(?:做种积分[:：]|任务系统当前人数[:：]|$)", text)
-        seeding_match = re.search(r"做种积分[:：]\s*(.+?)(?:任务系统当前人数[:：]|$)", text)
-        population_match = re.search(r"任务系统当前人数[:：]\s*(\d+)\s*人", text)
+        # Focus parse around the task progress block to avoid header/footer noise.
+        focus_html = html
+        marker = html.find("您领取的任务距离结束还有")
+        if marker >= 0:
+            end_candidates = []
+            for token in ["规则：", "<table cellspacing=\"0\" cellpadding=\"10\" width=\"80%\"", "<img width=\"300\" src='./pic/tasklogo5.png'", "<iframe src=\"./selfassessinfo.php\""]:
+                pos = html.find(token, marker)
+                if pos > marker:
+                    end_candidates.append(pos)
+            end_at = min(end_candidates) if end_candidates else min(len(html), marker + 12000)
+            focus_html = html[marker:end_at]
 
-        # html fallback for old NexusPHP mixed tags
-        if not upload_match:
-            upload_match = re.search(r"上传量[:：]\s*(.*?)\s*[（\(]增量[）\)]", html, flags=re.S)
-        if not download_match:
-            download_match = re.search(r"下载量[:：]\s*(.*?)\s*[（\(]增量[）\)]", html, flags=re.S)
-        if not seeding_match:
-            seeding_match = re.search(r"做种积分[:：]\s*(.*?)\s*[（\(]增量[）\)]", html, flags=re.S)
+        focus_text = self.__html_to_text(focus_html)
+
+        countdown_match = re.search(r"您领取的任务距离结束还有\s*([0-9]+\s*天\s*[0-9]+\s*小时\s*[0-9]+\s*分钟\s*[0-9]+\s*秒)", focus_text)
+        upload_match = re.search(r"上传量[:：]\s*(.*?)\s*[（\(]增量[）\)]", focus_html, flags=re.S)
+        download_match = re.search(r"下载量[:：]\s*(.*?)\s*[（\(]增量[）\)]", focus_html, flags=re.S)
+        seeding_match = re.search(r"做种积分[:：]\s*(.*?)\s*[（\(]增量[）\)]", focus_html, flags=re.S)
+
+        population_match = re.search(r"任务系统当前人数[:：]\s*(\d+)\s*人", text)
         if not population_match:
             population_match = re.search(r"任务系统当前人数[:：]\s*(\d+)\s*人", html)
 
+        countdown = self.__clean_text(countdown_match.group(1)) if countdown_match else "未解析到"
+        if countdown.startswith("00 天 00 小时 00 分钟") or countdown.startswith("0 天 0 小时 0 分钟"):
+            computed = self.__compute_countdown_from_script(html)
+            if computed:
+                countdown = computed
+
         return {
-            "countdown": self.__clean_text(countdown_match.group(1)) if countdown_match else "未解析到",
-            "upload": self.__clean_text(self.__html_to_text(upload_match.group(1)) if upload_match else "未解析到"),
-            "download": self.__clean_text(self.__html_to_text(download_match.group(1)) if download_match else "未解析到"),
-            "seeding": self.__clean_text(self.__html_to_text(seeding_match.group(1)) if seeding_match else "未解析到"),
+            "countdown": countdown,
+            "upload": self.__extract_progress_line(upload_match, "上传量"),
+            "download": self.__extract_progress_line(download_match, "下载量"),
+            "seeding": self.__extract_progress_line(seeding_match, "做种积分"),
             "population": int(population_match.group(1)) if population_match else None,
         }
+
+    def __extract_progress_line(self, matched: Optional[re.Match], label: str) -> str:
+        if not matched:
+            return "未解析到"
+        content = self.__clean_text(self.__html_to_text(matched.group(1)))
+        if not content:
+            return "未解析到"
+        return f"{content}（增量）"
+
+    @staticmethod
+    def __progress_color(value: str) -> str:
+        text = str(value or "")
+        if any(mark in text for mark in ["已通过", "已完成", "完成", "达成"]):
+            return "#43A047"
+        if any(mark in text for mark in ["还需要", "未完成", "不足", "未达成"]):
+            return "#E53935"
+        return "#FFFFFF"
+
+    @staticmethod
+    def __compute_countdown_from_script(html: str) -> str:
+        matched = re.search(r"downCount\s*\(\s*\{\s*date\s*:\s*'([^']+)'", html)
+        if not matched:
+            return ""
+        try:
+            target = datetime.strptime(matched.group(1), "%m/%d/%Y %H:%M:%S")
+            now = datetime.now()
+            if target <= now:
+                return "00 天 00 小时 00 分钟 00 秒"
+            total_seconds = int((target - now).total_seconds())
+            days = total_seconds // 86400
+            rem = total_seconds % 86400
+            hours = rem // 3600
+            rem = rem % 3600
+            minutes = rem // 60
+            seconds = rem % 60
+            return f"{days:02d} 天 {hours:02d} 小时 {minutes:02d} 分钟 {seconds:02d} 秒"
+        except Exception:
+            return ""
 
     def _should_send_capacity_alert(self, population: Optional[int]) -> bool:
         if population is None:
@@ -605,6 +656,9 @@ class ChdTaskMonitor(_PluginBase):
         seeding = str(latest.get("seeding") or "未解析到")
         population = latest.get("population")
         population_text = str(population) if isinstance(population, int) else "未解析到"
+        upload_color = self.__progress_color(upload)
+        download_color = self.__progress_color(download)
+        seeding_color = self.__progress_color(seeding)
 
         return [
             {
@@ -626,14 +680,14 @@ class ChdTaskMonitor(_PluginBase):
                             },
                             {
                                 "component": "div",
-                                "props": {"style": {"marginTop": "10px", "lineHeight": "1.7"}},
-                                "text": (
-                                    f"剩余时间：{countdown}\n"
-                                    f"上传量：{upload}\n"
-                                    f"下载量：{download}\n"
-                                    f"做种积分：{seeding}\n"
-                                    f"任务系统当前人数：{population_text}"
-                                ),
+                                "props": {"style": {"marginTop": "10px", "lineHeight": "1.7", "whiteSpace": "normal"}},
+                                "content": [
+                                    {"component": "div", "text": f"任务人数：{population_text}"},
+                                    {"component": "div", "text": f"我的任务：剩余时间 {countdown}"},
+                                    {"component": "div", "props": {"style": {"color": upload_color}}, "text": f"上传量：{upload}"},
+                                    {"component": "div", "props": {"style": {"color": download_color}}, "text": f"下载量：{download}"},
+                                    {"component": "div", "props": {"style": {"color": seeding_color}}, "text": f"做种积分：{seeding}"},
+                                ],
                             },
                         ],
                     }
@@ -665,6 +719,9 @@ class ChdTaskMonitor(_PluginBase):
         seeding = str(latest.get("seeding") or "未解析到")
         population = latest.get("population")
         population_text = str(population) if isinstance(population, int) else "未解析到"
+        upload_color = self.__progress_color(upload)
+        download_color = self.__progress_color(download)
+        seeding_color = self.__progress_color(seeding)
 
         population_color = "#4CAF50"
         if isinstance(population, int):
@@ -693,12 +750,12 @@ class ChdTaskMonitor(_PluginBase):
                                             {
                                                 "component": "div",
                                                 "props": {"style": {"marginTop": "10px", "lineHeight": "1.75"}},
-                                                "text": (
-                                                    f"剩余时间：{countdown}\n"
-                                                    f"上传量：{upload}\n"
-                                                    f"下载量：{download}\n"
-                                                    f"做种积分：{seeding}"
-                                                ),
+                                                "content": [
+                                                    {"component": "div", "text": f"我的任务：剩余时间 {countdown}"},
+                                                    {"component": "div", "props": {"style": {"color": upload_color}}, "text": f"上传量：{upload}"},
+                                                    {"component": "div", "props": {"style": {"color": download_color}}, "text": f"下载量：{download}"},
+                                                    {"component": "div", "props": {"style": {"color": seeding_color}}, "text": f"做种积分：{seeding}"},
+                                                ],
                                             },
                                         ],
                                     }
