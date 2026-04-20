@@ -14,7 +14,7 @@ class ChdTaskMonitor(_PluginBase):
     plugin_name = "CHD任务监控"
     plugin_desc = "抓取CHD任务页面进度与任务人数，并按规则发送通知。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.0.6"
+    plugin_version = "1.0.7"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "chdtaskmonitor_"
@@ -131,13 +131,22 @@ class ChdTaskMonitor(_PluginBase):
     def _run_polling(self):
         parsed = self._fetch_and_parse()
         if not parsed:
+            logger.info("[chdtaskmonitor] polling skipped: parse_result=None")
             return
 
         if not self._notify_on_capacity_available:
+            logger.info("[chdtaskmonitor] capacity notify disabled")
             return
 
         population = parsed.get("population")
         if self._should_send_capacity_alert(population=population):
+            logger.info(
+                "[chdtaskmonitor] capacity alert trigger: population=%s threshold=%s sent=%s/%s",
+                population,
+                self._capacity_threshold,
+                self._capacity_alert_sent_times,
+                self._capacity_alert_max_times,
+            )
             self.post_message(
                 mtype=NotificationType.SiteMessage,
                 title="【CHD任务监控】任务名额提醒",
@@ -147,6 +156,14 @@ class ChdTaskMonitor(_PluginBase):
                     f"（达到上限后静默 {self._capacity_alert_cooldown_hours} 小时，或人数恢复后重置）"
                 ),
             )
+            logger.info("[chdtaskmonitor] capacity alert sent")
+        else:
+            logger.info(
+                "[chdtaskmonitor] capacity alert not sent: population=%s sent=%s/%s",
+                population,
+                self._capacity_alert_sent_times,
+                self._capacity_alert_max_times,
+            )
 
     def _run_daily_summary(self):
         if not self._notify_daily_progress:
@@ -154,8 +171,10 @@ class ChdTaskMonitor(_PluginBase):
 
         parsed = self._fetch_and_parse()
         if not parsed:
+            logger.info("[chdtaskmonitor] daily summary skipped: parse_result=None")
             return
 
+        logger.info("[chdtaskmonitor] daily summary trigger")
         self.post_message(
             mtype=NotificationType.SiteMessage,
             title="【CHD任务监控】今日任务进度",
@@ -167,6 +186,7 @@ class ChdTaskMonitor(_PluginBase):
                 f"任务系统当前人数：{parsed.get('population', '未解析到')}"
             ),
         )
+        logger.info("[chdtaskmonitor] daily summary sent")
 
     def _fetch_and_parse(self) -> Optional[Dict[str, Any]]:
         html = self._fetch_selfassess_html()
@@ -202,6 +222,7 @@ class ChdTaskMonitor(_PluginBase):
                 headers={"User-Agent": self._ua},
             ).get_res(url=self._url)
             if response and response.status_code == 200:
+                logger.info("[chdtaskmonitor] page fetch ok: status=200 via cookies param")
                 return response.text
 
             # fallback: some environments require explicit Cookie header string
@@ -212,6 +233,7 @@ class ChdTaskMonitor(_PluginBase):
                 }
             ).get_res(url=self._url)
             if response and response.status_code == 200:
+                logger.info("[chdtaskmonitor] page fetch ok: status=200 via Cookie header")
                 return response.text
 
             logger.warning(
@@ -262,12 +284,17 @@ class ChdTaskMonitor(_PluginBase):
             if computed:
                 countdown = computed
 
+        has_task = bool(countdown_match or upload_match or download_match or seeding_match)
+        if not has_task:
+            countdown = "当前无任务"
+
         return {
             "countdown": countdown,
             "upload": self.__extract_progress_line(upload_match, "上传量"),
             "download": self.__extract_progress_line(download_match, "下载量"),
             "seeding": self.__extract_progress_line(seeding_match, "做种积分"),
             "population": int(population_match.group(1)) if population_match else None,
+            "has_task": has_task,
         }
 
     def __extract_progress_line(self, matched: Optional[re.Match], label: str) -> str:
@@ -654,6 +681,7 @@ class ChdTaskMonitor(_PluginBase):
         upload = str(latest.get("upload") or "未解析到")
         download = str(latest.get("download") or "未解析到")
         seeding = str(latest.get("seeding") or "未解析到")
+        has_task = bool(latest.get("has_task"))
         population = latest.get("population")
         population_text = str(population) if isinstance(population, int) else "未解析到"
         upload_color = self.__progress_color(upload)
@@ -683,10 +711,12 @@ class ChdTaskMonitor(_PluginBase):
                                 "props": {"style": {"marginTop": "10px", "lineHeight": "1.7", "whiteSpace": "normal"}},
                                 "content": [
                                     {"component": "div", "text": f"任务人数：{population_text}"},
-                                    {"component": "div", "text": f"我的任务：剩余时间 {countdown}"},
-                                    {"component": "div", "props": {"style": {"color": upload_color}}, "text": f"上传量：{upload}"},
-                                    {"component": "div", "props": {"style": {"color": download_color}}, "text": f"下载量：{download}"},
-                                    {"component": "div", "props": {"style": {"color": seeding_color}}, "text": f"做种积分：{seeding}"},
+                                    {"component": "div", "text": (f"我的任务：剩余时间 {countdown}" if has_task else "我的任务：当前无任务")},
+                                    *([
+                                        {"component": "div", "props": {"style": {"color": upload_color}}, "text": f"上传量：{upload}"},
+                                        {"component": "div", "props": {"style": {"color": download_color}}, "text": f"下载量：{download}"},
+                                        {"component": "div", "props": {"style": {"color": seeding_color}}, "text": f"做种积分：{seeding}"},
+                                    ] if has_task else []),
                                 ],
                             },
                         ],
@@ -717,15 +747,14 @@ class ChdTaskMonitor(_PluginBase):
         upload = str(latest.get("upload") or "未解析到")
         download = str(latest.get("download") or "未解析到")
         seeding = str(latest.get("seeding") or "未解析到")
+        has_task = bool(latest.get("has_task"))
         population = latest.get("population")
         population_text = str(population) if isinstance(population, int) else "未解析到"
         upload_color = self.__progress_color(upload)
         download_color = self.__progress_color(download)
         seeding_color = self.__progress_color(seeding)
 
-        population_color = "#4CAF50"
-        if isinstance(population, int):
-            population_color = "#E53935" if population >= self._capacity_threshold else "#43A047"
+        population_color = "#FFFFFF"
 
         elements = [
             {
@@ -763,47 +792,18 @@ class ChdTaskMonitor(_PluginBase):
                             }
                         ],
                     },
-                    {
-                        "component": "VCol",
-                        "props": {"cols": 12},
-                        "content": [
-                            {
-                                "component": "VCard",
-                                "props": {"variant": "tonal", "style": {"minHeight": f"{self._dashboard_min_height}px"}},
-                                "content": [
-                                    {
-                                        "component": "VCardText",
-                                        "content": [
-                                            {
-                                                "component": "div",
-                                                "props": {"class": "text-caption", "style": {"opacity": 0.8}},
-                                                "text": f"阈值设置：{self._capacity_threshold}",
-                                            },
-                                            {
-                                                "component": "div",
-                                                "props": {
-                                                    "style": {
-                                                        "marginTop": "8px",
-                                                        "fontSize": "26px",
-                                                        "fontWeight": 700,
-                                                        "color": population_color,
-                                                    }
-                                                },
-                                                "text": population_text,
-                                            },
-                                            {
-                                                "component": "div",
-                                                "props": {"class": "text-caption", "style": {"marginTop": "4px"}},
-                                                "text": "任务系统当前人数",
-                                            },
-                                        ],
-                                    }
-                                ],
-                            }
-                        ],
-                    },
                 ],
             }
+        ]
+        # make dashboard content match plugin page display shape
+        elements[0]["content"][0]["content"][0]["content"][0]["content"][1]["content"] = [
+            {"component": "div", "text": f"任务人数：{population_text}", "props": {"style": {"color": population_color}}},
+            {"component": "div", "text": (f"我的任务：剩余时间 {countdown}" if has_task else "我的任务：当前无任务")},
+            *([
+                {"component": "div", "props": {"style": {"color": upload_color}}, "text": f"上传量：{upload}"},
+                {"component": "div", "props": {"style": {"color": download_color}}, "text": f"下载量：{download}"},
+                {"component": "div", "props": {"style": {"color": seeding_color}}, "text": f"做种积分：{seeding}"},
+            ] if has_task else []),
         ]
         return cols, attrs, elements
 
