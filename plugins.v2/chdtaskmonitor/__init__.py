@@ -15,7 +15,7 @@ class ChdTaskMonitor(_PluginBase):
     plugin_name = "CHD任务监控"
     plugin_desc = "抓取CHD任务页面进度与任务人数，并按规则发送通知。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.1.3"
+    plugin_version = "1.1.4"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "chdtaskmonitor_"
@@ -37,6 +37,10 @@ class ChdTaskMonitor(_PluginBase):
     _task_type: str = "Extreme"
     _dashboard_size: str = "half"
     _dashboard_min_height: int = 220
+    _auto_claim_enabled: bool = False
+    _auto_claim_task_id: str = ""
+    _auto_claim_min_magic: int = 50000
+    _auto_claim_fail_cooldown_hours: int = 1
     _onlyonce: bool = False
 
     _last_capacity_below: bool = False
@@ -44,8 +48,11 @@ class ChdTaskMonitor(_PluginBase):
     _last_capacity_alert_ts: float = 0.0
     _last_cookie_alert_day: str = ""
     _last_error_alert_day: str = ""
+    _last_low_magic_alert_day: str = ""
     _last_snapshot: Dict[str, Any] = {}
     _last_poll_ts: float = 0.0
+    _last_auto_claim_fail_ts: float = 0.0
+    _last_auto_claim_fail_reason: str = ""
 
     _url: str = "https://ptchdbits.co/selfassess.php"
     _chart_url: str = "https://ptchdbits.co/selfassessinfo.php"
@@ -89,6 +96,10 @@ class ChdTaskMonitor(_PluginBase):
             if self._dashboard_size not in self._SIZE_COLS:
                 self._dashboard_size = "half"
             self._dashboard_min_height = self.__safe_int(config.get("dashboard_min_height"), 220, 160, 520)
+            self._auto_claim_enabled = self.__to_bool(config.get("auto_claim_enabled"), False)
+            self._auto_claim_task_id = str(config.get("auto_claim_task_id") or "").strip()
+            self._auto_claim_min_magic = self.__safe_int(config.get("auto_claim_min_magic"), 50000, 0, 999999999)
+            self._auto_claim_fail_cooldown_hours = self.__safe_int(config.get("auto_claim_fail_cooldown_hours"), 1, 1, 168)
             self._onlyonce = self.__to_bool(config.get("onlyonce"), False)
 
         if self._reset_capacity_alert_state:
@@ -171,6 +182,12 @@ class ChdTaskMonitor(_PluginBase):
             logger.info("[chdtaskmonitor] polling skipped: parse_result=None")
             return
 
+        claim_status, verified_parsed = self._try_auto_claim(parsed=parsed)
+        if verified_parsed:
+            parsed = verified_parsed
+        if claim_status != "skip_disabled":
+            logger.info("[chdtaskmonitor] auto-claim status=%s", claim_status)
+
         if not self._notify_on_capacity_available:
             logger.info("[chdtaskmonitor] capacity notify disabled")
             return
@@ -214,6 +231,10 @@ class ChdTaskMonitor(_PluginBase):
         parsed = self._fetch_and_parse(source="daily")
         if not parsed:
             logger.info("[chdtaskmonitor] daily summary skipped: parse_result=None")
+            return
+
+        if not parsed.get("has_task"):
+            logger.info("[chdtaskmonitor] daily summary skipped: no active task")
             return
 
         logger.info("[chdtaskmonitor] daily summary trigger")
@@ -268,6 +289,141 @@ class ChdTaskMonitor(_PluginBase):
             "yes" if parsed.get("chart") else "no",
         )
         return parsed
+
+    def _try_auto_claim(self, parsed: Dict[str, Any]) -> Tuple[str, Optional[Dict[str, Any]]]:
+        if not self._auto_claim_enabled:
+            return "skip_disabled", None
+
+        if parsed.get("has_task"):
+            return "skip_has_task", None
+
+        task_id = str(self._auto_claim_task_id or "").strip()
+        if not task_id:
+            return "skip_task_id_empty", None
+
+        population = parsed.get("population")
+        if not isinstance(population, int):
+            self._record_auto_claim_failure("population_unavailable")
+            return "fail_population_unavailable", None
+        if population >= self._capacity_threshold:
+            return "skip_population_not_below_threshold", None
+
+        now_ts = datetime.now().timestamp()
+        if self._is_auto_claim_in_cooldown(now_ts=now_ts):
+            cooldown_total = self._auto_claim_fail_cooldown_hours * 3600
+            remain = max(0, int(cooldown_total - (now_ts - self._last_auto_claim_fail_ts)))
+            logger.info(
+                "[chdtaskmonitor] auto-claim cooldown skip: remain=%ss last_reason=%s",
+                remain,
+                self._last_auto_claim_fail_reason or "unknown",
+            )
+            return "skip_cooldown", None
+
+        html = self._fetch_selfassess_html(source="claim-precheck")
+        if not html:
+            self._record_auto_claim_failure("precheck_fetch_failed")
+            return "fail_precheck_fetch", None
+
+        magic = self._parse_magic_balance(html)
+        if magic is None:
+            self._record_auto_claim_failure("magic_unavailable")
+            logger.warning("[chdtaskmonitor] auto-claim aborted: magic parse failed")
+            return "fail_magic_unavailable", None
+
+        if magic < float(self._auto_claim_min_magic):
+            self._record_auto_claim_failure("low_magic")
+            self.__notify_low_magic_once_per_day(
+                current_magic=magic,
+                min_magic=float(self._auto_claim_min_magic),
+                task_id=task_id,
+                population=population,
+            )
+            logger.info(
+                "[chdtaskmonitor] auto-claim skipped by low magic: magic=%.2f min_magic=%s",
+                magic,
+                self._auto_claim_min_magic,
+            )
+            return "skip_low_magic", None
+
+        logger.info(
+            "[chdtaskmonitor] auto-claim attempt: task_id=%s population=%s threshold=%s magic=%.2f min_magic=%s",
+            task_id,
+            population,
+            self._capacity_threshold,
+            magic,
+            self._auto_claim_min_magic,
+        )
+
+        request_ok, request_detail = self._post_claim_task(task_id=task_id, source="polling")
+        verify_parsed = self._fetch_and_parse(source="claim-verify")
+        if request_ok and verify_parsed and verify_parsed.get("has_task"):
+            self._last_auto_claim_fail_ts = 0.0
+            self._last_auto_claim_fail_reason = ""
+            logger.info("[chdtaskmonitor] auto-claim success: task_id=%s", task_id)
+            return "success", verify_parsed
+
+        self._record_auto_claim_failure("verify_failed")
+        logger.warning(
+            "[chdtaskmonitor] auto-claim failed: task_id=%s request_ok=%s detail=%s verify_has_task=%s",
+            task_id,
+            request_ok,
+            request_detail,
+            bool(verify_parsed and verify_parsed.get("has_task")),
+        )
+        return "fail_not_verified", verify_parsed
+
+    def _post_claim_task(self, task_id: str, source: str = "manual") -> Tuple[bool, str]:
+        task_id = str(task_id or "").strip()
+        if not task_id:
+            return False, "task_id_empty"
+        if not self._cookie:
+            return False, "cookie_empty"
+
+        payload = {"action": "order", "id": task_id}
+        try:
+            response = RequestUtils(
+                cookies=self._cookie,
+                headers={"User-Agent": self._ua},
+            ).post_res(url=self._url, data=payload)
+            if response and response.status_code == 200:
+                logger.info("[chdtaskmonitor] claim post ok: source=%s task_id=%s via cookies param", source, task_id)
+                return True, self.__clean_text(self.__html_to_text(response.text))[:160]
+
+            response = RequestUtils(
+                headers={
+                    "User-Agent": self._ua,
+                    "Cookie": self._cookie,
+                }
+            ).post_res(url=self._url, data=payload)
+            if response and response.status_code == 200:
+                logger.info("[chdtaskmonitor] claim post ok: source=%s task_id=%s via Cookie header", source, task_id)
+                return True, self.__clean_text(self.__html_to_text(response.text))[:160]
+
+            return False, f"status={response.status_code if response else 'None'}"
+        except Exception as err:
+            logger.error("[chdtaskmonitor] claim post exception: %s", str(err))
+            return False, f"exception={str(err)[:120]}"
+
+    def _parse_magic_balance(self, html: str) -> Optional[float]:
+        text = self.__html_to_text(str(html or ""))
+        matched = re.search(r"魔力值\s*\[使用\]\s*[:：]\s*([0-9][0-9,]*(?:\.[0-9]+)?)", text)
+        if not matched:
+            return None
+        try:
+            return float(matched.group(1).replace(",", ""))
+        except Exception:
+            return None
+
+    def _is_auto_claim_in_cooldown(self, now_ts: Optional[float] = None) -> bool:
+        if self._last_auto_claim_fail_ts <= 0:
+            return False
+        current_ts = now_ts if isinstance(now_ts, (int, float)) else datetime.now().timestamp()
+        cooldown_seconds = self._auto_claim_fail_cooldown_hours * 3600
+        return (current_ts - self._last_auto_claim_fail_ts) < cooldown_seconds
+
+    def _record_auto_claim_failure(self, reason: str):
+        self._last_auto_claim_fail_ts = datetime.now().timestamp()
+        self._last_auto_claim_fail_reason = str(reason or "unknown")
 
     @staticmethod
     def __build_countdown_end_ts(countdown_text: Any, has_task: bool) -> Optional[float]:
@@ -700,6 +856,20 @@ class ChdTaskMonitor(_PluginBase):
             text=message,
         )
 
+    def __notify_low_magic_once_per_day(self, current_magic: float, min_magic: float, task_id: str, population: int):
+        today_key = datetime.now().strftime("%Y-%m-%d")
+        if self._last_low_magic_alert_day == today_key:
+            return
+        self._last_low_magic_alert_day = today_key
+        self.post_message(
+            mtype=NotificationType.SiteMessage,
+            title="【CHD任务监控】自动领取已跳过",
+            text=(
+                f"自动领取任务已跳过：当前魔力值 {current_magic:.2f} 低于保护阈值 {min_magic:.2f}。\n"
+                f"任务ID：{task_id}，任务人数：{population}。"
+            ),
+        )
+
     def __persist_config(self):
         self.update_config({
             "enabled": self._enabled,
@@ -717,6 +887,10 @@ class ChdTaskMonitor(_PluginBase):
             "task_type": self._task_type,
             "dashboard_size": self._dashboard_size,
             "dashboard_min_height": self._dashboard_min_height,
+            "auto_claim_enabled": self._auto_claim_enabled,
+            "auto_claim_task_id": self._auto_claim_task_id,
+            "auto_claim_min_magic": self._auto_claim_min_magic,
+            "auto_claim_fail_cooldown_hours": self._auto_claim_fail_cooldown_hours,
             "onlyonce": self._onlyonce,
         })
 
@@ -760,6 +934,19 @@ class ChdTaskMonitor(_PluginBase):
                                 "content": [{
                                     "component": "VSwitch",
                                     "props": {"model": "notify_daily_progress", "label": "每日任务进度通知"},
+                                }],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 3},
+                                "content": [{
+                                    "component": "VSwitch",
+                                    "props": {
+                                        "model": "auto_claim_enabled",
+                                        "label": "自动领取任务",
+                                        "hint": "测试功能，谨慎开启",
+                                        "persistentHint": True,
+                                    },
                                 }],
                             },
                             {
@@ -851,6 +1038,48 @@ class ChdTaskMonitor(_PluginBase):
                                         "model": "check_cron",
                                         "label": "轮询Cron",
                                         "placeholder": "*/30 * * * *",
+                                    },
+                                }],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 6},
+                                "content": [{
+                                    "component": "VTextField",
+                                    "props": {
+                                        "model": "auto_claim_task_id",
+                                        "label": "自动领取任务ID",
+                                        "placeholder": "例如: 123",
+                                    },
+                                }],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 6},
+                                "content": [{
+                                    "component": "VTextField",
+                                    "props": {
+                                        "model": "auto_claim_min_magic",
+                                        "label": "自动领取最低魔力值",
+                                        "type": "number",
+                                        "min": 0,
+                                        "max": 999999999,
+                                        "placeholder": "50000",
+                                    },
+                                }],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 6},
+                                "content": [{
+                                    "component": "VTextField",
+                                    "props": {
+                                        "model": "auto_claim_fail_cooldown_hours",
+                                        "label": "自动领取失败冷静期(小时)",
+                                        "type": "number",
+                                        "min": 1,
+                                        "max": 168,
+                                        "placeholder": "1",
                                     },
                                 }],
                             },
@@ -974,6 +1203,10 @@ class ChdTaskMonitor(_PluginBase):
             "task_type": "Extreme",
             "dashboard_size": "half",
             "dashboard_min_height": 220,
+            "auto_claim_enabled": False,
+            "auto_claim_task_id": "",
+            "auto_claim_min_magic": 50000,
+            "auto_claim_fail_cooldown_hours": 1,
             "onlyonce": False,
         }
 
@@ -983,9 +1216,6 @@ class ChdTaskMonitor(_PluginBase):
         updated_at = str(latest.get("updated_at") or "未获取")
         countdown = str(latest.get("countdown") or "未解析到")
         countdown_display = self.__format_countdown_without_seconds(latest.get("countdown_end_ts"), countdown)
-        upload = str(latest.get("upload") or "未解析到")
-        download = str(latest.get("download") or "未解析到")
-        seeding = str(latest.get("seeding") or "未解析到")
         has_task = bool(latest.get("has_task"))
         population = latest.get("population")
         population_text = str(population) if isinstance(population, int) else "未解析到"
@@ -1073,9 +1303,6 @@ class ChdTaskMonitor(_PluginBase):
         updated_at = str(latest.get("updated_at") or "未获取")
         countdown = str(latest.get("countdown") or "未解析到")
         countdown_display = self.__format_countdown_without_seconds(latest.get("countdown_end_ts"), countdown)
-        upload = str(latest.get("upload") or "未解析到")
-        download = str(latest.get("download") or "未解析到")
-        seeding = str(latest.get("seeding") or "未解析到")
         has_task = bool(latest.get("has_task"))
         population = latest.get("population")
         population_text = str(population) if isinstance(population, int) else "未解析到"
