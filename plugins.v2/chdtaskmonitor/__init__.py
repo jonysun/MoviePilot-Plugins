@@ -15,7 +15,7 @@ class ChdTaskMonitor(_PluginBase):
     plugin_name = "CHD任务监控"
     plugin_desc = "抓取CHD任务页面进度与任务人数，并按规则发送通知。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.0.10"
+    plugin_version = "1.1.0"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "chdtaskmonitor_"
@@ -32,6 +32,9 @@ class ChdTaskMonitor(_PluginBase):
     _capacity_alert_max_times: int = 3
     _capacity_alert_cooldown_hours: int = 1
     _reset_capacity_alert_state: bool = False
+    _enable_task_chart: bool = False
+    _show_chart_in_dashboard: bool = False
+    _task_type: str = "Extreme"
     _dashboard_size: str = "half"
     _dashboard_min_height: int = 220
     _onlyonce: bool = False
@@ -45,6 +48,14 @@ class ChdTaskMonitor(_PluginBase):
     _last_poll_ts: float = 0.0
 
     _url: str = "https://ptchdbits.co/selfassess.php"
+    _chart_url: str = "https://ptchdbits.co/selfassessinfo.php"
+    _TASK_TARGETS: Dict[str, Dict[str, float]] = {
+        "Master": {"upload": 2000.0, "download": 600.0, "seeding": 45000.0},
+        "Ultimate": {"upload": 1500.0, "download": 500.0, "seeding": 40000.0},
+        "Extreme": {"upload": 1000.0, "download": 400.0, "seeding": 35000.0},
+        "Veteran": {"upload": 500.0, "download": 300.0, "seeding": 30000.0},
+        "Insane": {"upload": 300.0, "download": 100.0, "seeding": 20000.0},
+    }
     _SIZE_COLS: Dict[str, Dict[str, int]] = {
         "one_third": {"cols": 12, "md": 4},
         "half": {"cols": 12, "md": 6},
@@ -69,6 +80,11 @@ class ChdTaskMonitor(_PluginBase):
             self._capacity_alert_max_times = self.__safe_int(config.get("capacity_alert_max_times"), 3, 1, 99)
             self._capacity_alert_cooldown_hours = self.__safe_int(config.get("capacity_alert_cooldown_hours"), 1, 1, 168)
             self._reset_capacity_alert_state = self.__to_bool(config.get("reset_capacity_alert_state"), False)
+            self._enable_task_chart = self.__to_bool(config.get("enable_task_chart"), False)
+            self._show_chart_in_dashboard = self.__to_bool(config.get("show_chart_in_dashboard"), False)
+            self._task_type = str(config.get("task_type") or "Extreme")
+            if self._task_type not in self._TASK_TARGETS:
+                self._task_type = "Extreme"
             self._dashboard_size = str(config.get("dashboard_size") or "half")
             if self._dashboard_size not in self._SIZE_COLS:
                 self._dashboard_size = "half"
@@ -225,18 +241,30 @@ class ChdTaskMonitor(_PluginBase):
             return None
 
         parsed = self._parse_task_page(html)
+        parsed["task_status"] = self.__build_task_status(parsed)
+
+        if parsed.get("has_task") and self._enable_task_chart:
+            chart_html = self._fetch_selfassessinfo_html(source=source)
+            if chart_html:
+                parsed["chart"] = self._parse_task_chart(chart_html)
+            else:
+                parsed["chart"] = None
+        else:
+            parsed["chart"] = None
         self._last_snapshot = {
             "updated_at": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             **parsed,
         }
         logger.info(
-            "[chdtaskmonitor] parsed source=%s countdown=%s upload=%s download=%s seeding=%s population=%s",
+            "[chdtaskmonitor] parsed source=%s countdown=%s upload=%s download=%s seeding=%s population=%s has_task=%s chart=%s",
             source,
             parsed.get("countdown"),
             parsed.get("upload"),
             parsed.get("download"),
             parsed.get("seeding"),
             parsed.get("population"),
+            parsed.get("has_task"),
+            "yes" if parsed.get("chart") else "no",
         )
         return parsed
 
@@ -271,6 +299,38 @@ class ChdTaskMonitor(_PluginBase):
             return None
         except Exception as err:
             logger.error("[chdtaskmonitor] 请求异常: %s", str(err))
+            return None
+
+    def _fetch_selfassessinfo_html(self, source: str = "manual") -> Optional[str]:
+        if not self._cookie:
+            return None
+        try:
+            response = RequestUtils(
+                cookies=self._cookie,
+                headers={"User-Agent": self._ua},
+            ).get_res(url=self._chart_url)
+            if response and response.status_code == 200:
+                logger.info("[chdtaskmonitor] chart fetch ok: source=%s status=200 via cookies param", source)
+                return response.text
+
+            response = RequestUtils(
+                headers={
+                    "User-Agent": self._ua,
+                    "Cookie": self._cookie,
+                }
+            ).get_res(url=self._chart_url)
+            if response and response.status_code == 200:
+                logger.info("[chdtaskmonitor] chart fetch ok: source=%s status=200 via Cookie header", source)
+                return response.text
+
+            logger.warning(
+                "[chdtaskmonitor] chart fetch failed source=%s status=%s",
+                source,
+                response.status_code if response else "None",
+            )
+            return None
+        except Exception as err:
+            logger.error("[chdtaskmonitor] chart fetch exception: %s", str(err))
             return None
 
     def _is_authenticated_page(self, html: str) -> bool:
@@ -332,6 +392,133 @@ class ChdTaskMonitor(_PluginBase):
         if not content:
             return "未解析到"
         return f"{content}（增量）"
+
+    def __build_task_status(self, parsed: Dict[str, Any]) -> Dict[str, Any]:
+        task_type = self._task_type if self._task_type in self._TASK_TARGETS else "Extreme"
+        targets = self._TASK_TARGETS.get(task_type) or self._TASK_TARGETS["Extreme"]
+
+        upload_text = str(parsed.get("upload") or "")
+        download_text = str(parsed.get("download") or "")
+        seeding_text = str(parsed.get("seeding") or "")
+
+        upload_progress, upload_done = self.__progress_from_text(upload_text, targets["upload"], mode="data")
+        download_progress, download_done = self.__progress_from_text(download_text, targets["download"], mode="data")
+        seeding_progress, seeding_done = self.__progress_from_text(seeding_text, targets["seeding"], mode="score")
+
+        return {
+            "task_type": task_type,
+            "items": [
+                {"key": "upload", "label": "上传量", "text": upload_text or "未解析到", "progress": upload_progress, "done": upload_done},
+                {"key": "download", "label": "下载量", "text": download_text or "未解析到", "progress": download_progress, "done": download_done},
+                {"key": "seeding", "label": "做种积分", "text": seeding_text or "未解析到", "progress": seeding_progress, "done": seeding_done},
+            ],
+        }
+
+    @staticmethod
+    def __parse_data_to_gb(raw: str) -> Optional[float]:
+        matched = re.search(r"([0-9]+(?:\.[0-9]+)?)\s*(TB|GB|MB|KB)", str(raw or ""), flags=re.I)
+        if not matched:
+            return None
+        value = float(matched.group(1))
+        unit = matched.group(2).upper()
+        if unit == "TB":
+            return value * 1024.0
+        if unit == "GB":
+            return value
+        if unit == "MB":
+            return value / 1024.0
+        if unit == "KB":
+            return value / (1024.0 * 1024.0)
+        return None
+
+    @staticmethod
+    def __parse_number(raw: str) -> Optional[float]:
+        matched = re.search(r"([0-9]+(?:\.[0-9]+)?)", str(raw or ""))
+        if not matched:
+            return None
+        return float(matched.group(1))
+
+    def __progress_from_text(self, text: str, target: float, mode: str) -> Tuple[float, bool]:
+        if not text or target <= 0:
+            return 0.0, False
+        if any(word in text for word in ["已通过", "已完成", "完成", "达成"]):
+            return 1.0, True
+        if "还需要" in text:
+            remain = self.__parse_data_to_gb(text) if mode == "data" else self.__parse_number(text)
+            if remain is None:
+                return 0.0, False
+            progress = max(0.0, min(1.0, (target - remain) / target))
+            return progress, progress >= 0.999
+        return 0.0, False
+
+    def _parse_task_chart(self, html: str) -> Optional[Dict[str, Any]]:
+        try:
+            categories_match = re.search(r"categories\s*:\s*\[([^\]]*)\]", html, flags=re.S)
+            if not categories_match:
+                logger.warning("[chdtaskmonitor] chart parse failed: categories missing")
+                return None
+            categories = [a or b for a, b in re.findall(r"'([^']*)'|\"([^\"]*)\"", categories_match.group(1))]
+            categories = [str(x).strip() for x in categories if str(x).strip()]
+
+            series_list: List[Dict[str, Any]] = []
+            for block in re.finditer(r"\{\s*name\s*:\s*'([^']+)'[\s\S]*?data\s*:\s*\[([^\]]*)\]", html, flags=re.S):
+                name = block.group(1).strip()
+                raw_data = block.group(2)
+                data: List[float] = []
+                for token in raw_data.split(","):
+                    token = token.strip()
+                    if not token:
+                        continue
+                    try:
+                        data.append(float(token))
+                    except Exception:
+                        continue
+                if not data:
+                    continue
+
+                color = "#9155FD"
+                if "做种" in name:
+                    color = "#FF0000"
+                elif "上传" in name:
+                    color = "#00A8FF"
+                elif "下载" in name:
+                    color = "#43A047"
+                series_list.append({"name": name, "data": data, "color": color})
+
+            if not series_list:
+                logger.warning("[chdtaskmonitor] chart parse failed: series missing")
+                return None
+
+            logger.info("[chdtaskmonitor] chart parse ok: categories=%s series=%s", len(categories), len(series_list))
+            return {"categories": categories, "series": series_list}
+        except Exception as err:
+            logger.warning("[chdtaskmonitor] chart parse exception: %s", str(err))
+            return None
+
+    @staticmethod
+    def __build_chart_component(chart: Optional[Dict[str, Any]], height: int = 220) -> Optional[dict]:
+        if not isinstance(chart, dict):
+            return None
+        categories = chart.get("categories") or []
+        series = chart.get("series") or []
+        if not categories or not series:
+            return None
+        return {
+            "component": "VApexChart",
+            "props": {
+                "height": height,
+                "options": {
+                    "chart": {"type": "line", "toolbar": {"show": False}},
+                    "stroke": {"curve": "smooth", "width": 2},
+                    "xaxis": {"categories": categories, "labels": {"show": True}},
+                    "legend": {"show": True, "position": "top"},
+                    "dataLabels": {"enabled": False},
+                    "tooltip": {"shared": True, "intersect": False},
+                    "grid": {"borderColor": "#9CA3AF33", "strokeDashArray": 3},
+                },
+                "series": series,
+            },
+        }
 
     @staticmethod
     def __progress_color(value: str) -> str:
@@ -476,6 +663,9 @@ class ChdTaskMonitor(_PluginBase):
             "capacity_alert_max_times": self._capacity_alert_max_times,
             "capacity_alert_cooldown_hours": self._capacity_alert_cooldown_hours,
             "reset_capacity_alert_state": self._reset_capacity_alert_state,
+            "enable_task_chart": self._enable_task_chart,
+            "show_chart_in_dashboard": self._show_chart_in_dashboard,
+            "task_type": self._task_type,
             "dashboard_size": self._dashboard_size,
             "dashboard_min_height": self._dashboard_min_height,
             "onlyonce": self._onlyonce,
@@ -561,6 +751,40 @@ class ChdTaskMonitor(_PluginBase):
                                     "props": {
                                         "model": "reset_capacity_alert_state",
                                         "label": "重置名额提醒状态",
+                                    },
+                                }],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 3},
+                                "content": [{
+                                    "component": "VSwitch",
+                                    "props": {"model": "enable_task_chart", "label": "任务数据可视化"},
+                                }],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 3},
+                                "content": [{
+                                    "component": "VSwitch",
+                                    "props": {"model": "show_chart_in_dashboard", "label": "在仪表板显示趋势图"},
+                                }],
+                            },
+                            {
+                                "component": "VCol",
+                                "props": {"cols": 12, "md": 3},
+                                "content": [{
+                                    "component": "VSelect",
+                                    "props": {
+                                        "model": "task_type",
+                                        "label": "任务类型",
+                                        "items": [
+                                            {"title": "Master", "value": "Master"},
+                                            {"title": "Ultimate", "value": "Ultimate"},
+                                            {"title": "Extreme", "value": "Extreme"},
+                                            {"title": "Veteran", "value": "Veteran"},
+                                            {"title": "Insane", "value": "Insane"}
+                                        ]
                                     },
                                 }],
                             },
@@ -696,6 +920,9 @@ class ChdTaskMonitor(_PluginBase):
             "capacity_alert_max_times": 3,
             "capacity_alert_cooldown_hours": 1,
             "reset_capacity_alert_state": False,
+            "enable_task_chart": False,
+            "show_chart_in_dashboard": False,
+            "task_type": "Extreme",
             "dashboard_size": "half",
             "dashboard_min_height": 220,
             "onlyonce": False,
@@ -712,9 +939,34 @@ class ChdTaskMonitor(_PluginBase):
         has_task = bool(latest.get("has_task"))
         population = latest.get("population")
         population_text = str(population) if isinstance(population, int) else "未解析到"
-        upload_color = self.__progress_color(upload)
-        download_color = self.__progress_color(download)
-        seeding_color = self.__progress_color(seeding)
+        task_status = latest.get("task_status") if isinstance(latest.get("task_status"), dict) else {}
+        task_type = str(task_status.get("task_type") or self._task_type)
+        progress_items = task_status.get("items") if isinstance(task_status.get("items"), list) else []
+        chart_data = latest.get("chart") if isinstance(latest.get("chart"), dict) else None
+
+        progress_rows: List[dict] = []
+        for item in progress_items:
+            label = str(item.get("label") or "")
+            text_val = str(item.get("text") or "未解析到")
+            progress = max(0.0, min(100.0, float(item.get("progress") or 0) * 100.0))
+            done = bool(item.get("done"))
+            bar_color = "#43A047" if done else "#9155FD"
+            text_color = self.__progress_color(text_val)
+            progress_rows.extend([
+                {"component": "div", "props": {"style": {"color": text_color, "marginTop": "6px"}}, "text": f"{label}：{text_val}"},
+                {
+                    "component": "VProgressLinear",
+                    "props": {
+                        "modelValue": progress,
+                        "color": bar_color,
+                        "height": 8,
+                        "rounded": True,
+                        "style": {"marginTop": "4px", "marginBottom": "2px"},
+                    },
+                },
+            ])
+
+        chart_component = self.__build_chart_component(chart_data, height=250)
 
         return [
             {
@@ -739,14 +991,14 @@ class ChdTaskMonitor(_PluginBase):
                                 "props": {"style": {"marginTop": "10px", "lineHeight": "1.7", "whiteSpace": "normal"}},
                                 "content": [
                                     {"component": "div", "text": f"任务人数：{population_text}"},
+                                    {"component": "div", "text": f"任务类型：{task_type}"},
                                     {"component": "div", "text": (f"我的任务：剩余时间 {countdown}" if has_task else "我的任务：当前无任务")},
-                                    *([
-                                        {"component": "div", "props": {"style": {"color": upload_color}}, "text": f"上传量：{upload}"},
-                                        {"component": "div", "props": {"style": {"color": download_color}}, "text": f"下载量：{download}"},
-                                        {"component": "div", "props": {"style": {"color": seeding_color}}, "text": f"做种积分：{seeding}"},
-                                    ] if has_task else []),
+                                    *(progress_rows if has_task else []),
                                 ],
                             },
+                            *([
+                                {"component": "div", "props": {"style": {"marginTop": "12px"}}, "content": [chart_component]}
+                            ] if has_task and self._enable_task_chart and chart_component else []),
                         ],
                     }
                 ],
@@ -776,11 +1028,34 @@ class ChdTaskMonitor(_PluginBase):
         has_task = bool(latest.get("has_task"))
         population = latest.get("population")
         population_text = str(population) if isinstance(population, int) else "未解析到"
-        upload_color = self.__progress_color(upload)
-        download_color = self.__progress_color(download)
-        seeding_color = self.__progress_color(seeding)
+        task_status = latest.get("task_status") if isinstance(latest.get("task_status"), dict) else {}
+        task_type = str(task_status.get("task_type") or self._task_type)
+        progress_items = task_status.get("items") if isinstance(task_status.get("items"), list) else []
+        chart_data = latest.get("chart") if isinstance(latest.get("chart"), dict) else None
 
-        population_color = "#FFFFFF"
+        progress_rows: List[dict] = []
+        for item in progress_items:
+            label = str(item.get("label") or "")
+            text_val = str(item.get("text") or "未解析到")
+            progress = max(0.0, min(100.0, float(item.get("progress") or 0) * 100.0))
+            done = bool(item.get("done"))
+            bar_color = "#43A047" if done else "#9155FD"
+            text_color = self.__progress_color(text_val)
+            progress_rows.extend([
+                {"component": "div", "props": {"style": {"color": text_color, "marginTop": "6px"}}, "text": f"{label}：{text_val}"},
+                {
+                    "component": "VProgressLinear",
+                    "props": {
+                        "modelValue": progress,
+                        "color": bar_color,
+                        "height": 8,
+                        "rounded": True,
+                        "style": {"marginTop": "4px", "marginBottom": "2px"},
+                    },
+                },
+            ])
+
+        chart_component = self.__build_chart_component(chart_data, height=170)
 
         elements = [
             {
@@ -806,15 +1081,15 @@ class ChdTaskMonitor(_PluginBase):
                                                 "component": "div",
                                                 "props": {"style": {"marginTop": "10px", "lineHeight": "1.75", "whiteSpace": "normal"}},
                                                 "content": [
-                                                    {"component": "div", "text": f"任务人数：{population_text}", "props": {"style": {"color": population_color}}},
+                                                    {"component": "div", "text": f"任务人数：{population_text}"},
+                                                    {"component": "div", "text": f"任务类型：{task_type}"},
                                                     {"component": "div", "text": (f"我的任务：剩余时间 {countdown}" if has_task else "我的任务：当前无任务")},
-                                                    *([
-                                                        {"component": "div", "props": {"style": {"color": upload_color}}, "text": f"上传量：{upload}"},
-                                                        {"component": "div", "props": {"style": {"color": download_color}}, "text": f"下载量：{download}"},
-                                                        {"component": "div", "props": {"style": {"color": seeding_color}}, "text": f"做种积分：{seeding}"},
-                                                    ] if has_task else []),
+                                                    *(progress_rows if has_task else []),
                                                 ],
                                             },
+                                            *([
+                                                {"component": "div", "props": {"style": {"marginTop": "12px"}}, "content": [chart_component]}
+                                            ] if has_task and self._enable_task_chart and self._show_chart_in_dashboard and chart_component else []),
                                         ],
                                     }
                                 ],
