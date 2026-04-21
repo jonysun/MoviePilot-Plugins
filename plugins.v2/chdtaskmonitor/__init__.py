@@ -15,7 +15,7 @@ class ChdTaskMonitor(_PluginBase):
     plugin_name = "CHD任务监控"
     plugin_desc = "抓取CHD任务页面进度与任务人数，并按规则发送通知。"
     plugin_icon = "statistic.png"
-    plugin_version = "1.1.0"
+    plugin_version = "1.1.3"
     plugin_author = "jonysun"
     author_url = "https://github.com/jonysun"
     plugin_config_prefix = "chdtaskmonitor_"
@@ -242,6 +242,7 @@ class ChdTaskMonitor(_PluginBase):
 
         parsed = self._parse_task_page(html)
         parsed["task_status"] = self.__build_task_status(parsed)
+        parsed["countdown_end_ts"] = self.__build_countdown_end_ts(parsed.get("countdown"), bool(parsed.get("has_task")))
 
         if parsed.get("has_task") and self._enable_task_chart:
             chart_html = self._fetch_selfassessinfo_html(source=source)
@@ -267,6 +268,54 @@ class ChdTaskMonitor(_PluginBase):
             "yes" if parsed.get("chart") else "no",
         )
         return parsed
+
+    @staticmethod
+    def __build_countdown_end_ts(countdown_text: Any, has_task: bool) -> Optional[float]:
+        if not has_task:
+            return None
+        seconds = ChdTaskMonitor.__countdown_text_to_seconds(countdown_text)
+        if seconds is None:
+            return None
+        return datetime.now().timestamp() + float(seconds)
+
+    @staticmethod
+    def __countdown_text_to_seconds(countdown_text: Any) -> Optional[int]:
+        value = str(countdown_text or "").strip()
+        if not value:
+            return None
+        matched = re.search(r"(\d+)\s*天\s*(\d+)\s*小时\s*(\d+)\s*分钟\s*(\d+)\s*秒", value)
+        if not matched:
+            return None
+        days = int(matched.group(1))
+        hours = int(matched.group(2))
+        minutes = int(matched.group(3))
+        seconds = int(matched.group(4))
+        return days * 86400 + hours * 3600 + minutes * 60 + seconds
+
+    @staticmethod
+    def __format_countdown_without_seconds(end_ts: Optional[float], fallback_text: str = "") -> str:
+        if isinstance(end_ts, (int, float)) and end_ts > 0:
+            remain = int(max(0, end_ts - datetime.now().timestamp()))
+            if remain <= 0:
+                return "已结束"
+            days = remain // 86400
+            remain %= 86400
+            hours = remain // 3600
+            remain %= 3600
+            minutes = remain // 60
+            return f"{days} Day {hours}h {minutes}min"
+
+        seconds = ChdTaskMonitor.__countdown_text_to_seconds(fallback_text)
+        if seconds is None:
+            return "未解析到"
+        if seconds <= 0:
+            return "已结束"
+        days = seconds // 86400
+        seconds %= 86400
+        hours = seconds // 3600
+        seconds %= 3600
+        minutes = seconds // 60
+        return f"{days} Day {hours}h {minutes}min"
 
     def _fetch_selfassess_html(self, source: str = "manual") -> Optional[str]:
         if not self._cookie:
@@ -933,6 +982,7 @@ class ChdTaskMonitor(_PluginBase):
 
         updated_at = str(latest.get("updated_at") or "未获取")
         countdown = str(latest.get("countdown") or "未解析到")
+        countdown_display = self.__format_countdown_without_seconds(latest.get("countdown_end_ts"), countdown)
         upload = str(latest.get("upload") or "未解析到")
         download = str(latest.get("download") or "未解析到")
         seeding = str(latest.get("seeding") or "未解析到")
@@ -992,7 +1042,7 @@ class ChdTaskMonitor(_PluginBase):
                                 "content": [
                                     {"component": "div", "text": f"任务人数：{population_text}"},
                                     {"component": "div", "text": f"任务类型：{task_type}"},
-                                    {"component": "div", "text": (f"我的任务：剩余时间 {countdown}" if has_task else "我的任务：当前无任务")},
+                                    {"component": "div", "text": (f"我的任务：{task_type} 剩余时间 {countdown_display}" if has_task else "我的任务：当前无任务")},
                                     *(progress_rows if has_task else []),
                                 ],
                             },
@@ -1022,6 +1072,7 @@ class ChdTaskMonitor(_PluginBase):
 
         updated_at = str(latest.get("updated_at") or "未获取")
         countdown = str(latest.get("countdown") or "未解析到")
+        countdown_display = self.__format_countdown_without_seconds(latest.get("countdown_end_ts"), countdown)
         upload = str(latest.get("upload") or "未解析到")
         download = str(latest.get("download") or "未解析到")
         seeding = str(latest.get("seeding") or "未解析到")
@@ -1071,25 +1122,32 @@ class ChdTaskMonitor(_PluginBase):
                                 "content": [
                                     {
                                         "component": "VCardText",
+                                        "props": {"style": {"padding": "8px 12px"}},
                                         "content": [
                                             {
                                                 "component": "div",
-                                                "props": {"class": "text-caption", "style": {"opacity": 0.8}},
-                                                "text": f"更新时间：{updated_at}",
-                                            },
-                                            {
-                                                "component": "div",
-                                                "props": {"style": {"marginTop": "10px", "lineHeight": "1.75", "whiteSpace": "normal"}},
+                                                "props": {"style": {"marginTop": "2px", "lineHeight": "1.7", "whiteSpace": "normal"}},
                                                 "content": [
                                                     {"component": "div", "text": f"任务人数：{population_text}"},
-                                                    {"component": "div", "text": f"任务类型：{task_type}"},
-                                                    {"component": "div", "text": (f"我的任务：剩余时间 {countdown}" if has_task else "我的任务：当前无任务")},
+                                                    {"component": "div", "text": (f"我的任务：{task_type} 剩余时间 {countdown_display}" if has_task else "我的任务：当前无任务")},
                                                     *(progress_rows if has_task else []),
                                                 ],
                                             },
                                             *([
                                                 {"component": "div", "props": {"style": {"marginTop": "12px"}}, "content": [chart_component]}
                                             ] if has_task and self._enable_task_chart and self._show_chart_in_dashboard and chart_component else []),
+                                            {
+                                                "component": "div",
+                                                "props": {
+                                                    "class": "text-caption",
+                                                    "style": {
+                                                        "marginTop": "8px",
+                                                        "textAlign": "right",
+                                                        "opacity": 0.75,
+                                                    },
+                                                },
+                                                "text": f"更新时间：{updated_at}",
+                                            },
                                         ],
                                     }
                                 ],
